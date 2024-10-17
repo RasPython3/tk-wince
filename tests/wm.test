@@ -1429,7 +1429,7 @@ destroy .t
 ### wm stackorder ###
 test wm-stackorder-2.3 {stacking order} -body {
     toplevel .xt
-    toplevel .tx2
+    toplevel .xt2
     update
     raise .
     raiseDelay
