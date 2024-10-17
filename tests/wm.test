@@ -1427,6 +1427,19 @@ test wm-sizefrom-2.1 {setting and reading values} {
 destroy .t
 
 ### wm stackorder ###
+test wm-stackorder-2.3 {stacking order} -body {
+    toplevel .t
+    tkwait visibility .t
+    toplevel .t2
+    tkwait visibility .t2
+    raise .
+    raiseDelay
+    raise .t2
+    raiseDelay
+    wm stackorder .
+} -cleanup {
+    destroy .t .t2
+} -result {.t . .t2}
 test wm-stackorder-1.1 {usage} -returnCodes error -body {
     wm stackorder
 } -result {wrong # args: should be "wm option window ?arg ...?"}
@@ -1503,19 +1516,6 @@ test wm-stackorder-2.2 {stacking order} -body {
 } -cleanup {
     destroy .t
 } -result {.t .}
-test wm-stackorder-2.3 {stacking order} -body {
-    toplevel .t
-    tkwait visibility .t
-    toplevel .t2
-    tkwait visibility .t2
-    raise .
-    raiseDelay
-    raise .t2
-    raiseDelay
-    wm stackorder .
-} -cleanup {
-    destroy .t .t2
-} -result {.t . .t2}
 test wm-stackorder-2.4 {stacking order} -body {
     toplevel .t ; update
     toplevel .t2 ; update
