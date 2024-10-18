@@ -359,10 +359,18 @@ XMapWindow(display, w)
     XEvent event;
     TkWindow *parentPtr;
     TkWindow *winPtr = TkWinGetWinPtr(w);
+    HWND hwnd;
 
     display->request++;
 
-    ShowWindow(Tk_GetHWND(w), SW_SHOWNORMAL);
+    hwnd = Tk_GetHWND(w);
+    ShowWindow(hwnd, SW_SHOWNORMAL);
+
+#ifdef UNDER_CE
+    InvalidateRect(hwnd, NULL, TRUE);
+    UpdateWindow(hwnd);
+#endif
+
     winPtr->flags |= TK_MAPPED;
 
     /*

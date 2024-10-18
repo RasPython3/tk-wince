@@ -17,12 +17,21 @@
 
 #include <commdlg.h>    /* includes common dialog functionality */
 #include <dlgs.h>       /* includes common dialog template defines */
+
+#ifdef UNDER_CE
+#include <commctrl.h>
+#else
 #include <cderr.h>      /* includes the common dialog error codes */
+#endif
 
 /*
  * This controls the use of the new style tk_chooseDirectory dialog.
  */
+#ifdef UNDER_CE
+#undef USE_NEW_CHOOSEDIR // not until Windows CE.NET
+#else
 #define USE_NEW_CHOOSEDIR 1
+#endif
 #ifdef USE_NEW_CHOOSEDIR
 #include <shlobj.h>     /* includes SHBrowseForFolder */
 
@@ -657,9 +666,11 @@ GetFileNameW(clientData, interp, objc, objv, open)
 #ifdef _WIN64
     ofn.hInstance		= (HINSTANCE) GetWindowLongPtr(ofn.hwndOwner, 
 					GWLP_HINSTANCE);
-#else
+#elif defined(GWL_HINSTANCE)
     ofn.hInstance		= (HINSTANCE) GetWindowLong(ofn.hwndOwner, 
 					GWL_HINSTANCE);
+#else // Windows CE does not define GWL_HINSTANCE as of v3.0
+    ofn.hInstance		= NULL;
 #endif
     ofn.lpstrFile		= (WCHAR *) file;
     ofn.nMaxFile		= TK_MULTI_MAX_PATH;
@@ -853,7 +864,7 @@ GetFileNameW(clientData, interp, objc, objv, open)
 	 * We could also check for FNERR_BUFFERTOOSMALL, but we can't
 	 * really do anything about it when it happens.
 	 */
-
+#ifdef FNERR_INVALIDFILENAME // not defined on Windows CE as of v3.00
 	if (CommDlgExtendedError() == FNERR_INVALIDFILENAME) {
 	    char *p;
 	    Tcl_DString ds;
@@ -872,7 +883,9 @@ GetFileNameW(clientData, interp, objc, objv, open)
 	    Tcl_SetResult(interp, "invalid filename \"", TCL_STATIC);
 	    Tcl_AppendResult(interp, Tcl_DStringValue(&ds), "\"", NULL);
 	    Tcl_DStringFree(&ds);
-	} else {
+	} else
+#endif
+	    {
 	    result = TCL_OK;
 	}
     }
@@ -1131,9 +1144,11 @@ GetFileNameA(clientData, interp, objc, objv, open)
 #ifdef _WIN64
     ofn.hInstance		= (HINSTANCE) GetWindowLongPtr(ofn.hwndOwner, 
 					GWLP_HINSTANCE);
-#else
+#elif defined(GWL_HINSTANCE)
     ofn.hInstance		= (HINSTANCE) GetWindowLong(ofn.hwndOwner, 
 					GWL_HINSTANCE);
+#else // Windows CE does not define GWL_HINSTANCE as of v3.0
+    ofn.hInstance		= NULL;
 #endif
     ofn.lpstrFilter		= NULL;
     ofn.lpstrCustomFilter	= NULL;
@@ -1337,6 +1352,7 @@ GetFileNameA(clientData, interp, objc, objv, open)
 	 * We could also check for FNERR_BUFFERTOOSMALL, but we can't
 	 * really do anything about it when it happens.
 	 */
+#ifdef FNERR_INVALIDFILENAME // not defined on Windows CE as of v3.00
 	if (CommDlgExtendedError() == FNERR_INVALIDFILENAME) {
 	    char *p;
 	    Tcl_DString ds;
@@ -1354,7 +1370,9 @@ GetFileNameA(clientData, interp, objc, objv, open)
 	    Tcl_SetResult(interp, "invalid filename \"", TCL_STATIC);
 	    Tcl_AppendResult(interp, Tcl_DStringValue(&ds), "\"", NULL);
 	    Tcl_DStringFree(&ds);
-	} else {
+	} else
+#endif
+	    {
 	    result = TCL_OK;
 	}
     }
@@ -1719,7 +1737,7 @@ Tk_ChooseDirectoryObjCmd(clientData, interp, objc, objv)
                  * dialog happy
                  */
                 GetFullPathName(string, MAX_PATH, saveDir, NULL);
-                lstrcpyn(cdCBData.utfInitDir, saveDir, MAX_PATH);
+                memcpy(cdCBData.utfInitDir, saveDir, MAX_PATH);
                 Tcl_DStringFree(&initDirString);
                 break;
             }
@@ -1897,7 +1915,7 @@ ChooseDirectoryValidateProc (
              */
             Tcl_TranslateFileName(chooseDirSharedData->interp,
                     (char *)lParam, &initDirString);
-            lstrcpyn (string, Tcl_DStringValue(&initDirString), MAX_PATH);
+            memcpy(string, Tcl_DStringValue(&initDirString), MAX_PATH);
             Tcl_DStringFree(&initDirString);
 
             if (SetCurrentDirectory((char *)string) == 0) {
@@ -1958,6 +1976,7 @@ ChooseDirectoryValidateProc (
 	    char *initDir = chooseDirSharedData->utfInitDir;
 
 	    SetCurrentDirectory(initDir);
+#ifdef BFFM_SETSELECTION // not defined for Windows CE as of 3.0
 	    if (*initDir == '\\') {
 		/*
 		 * BFFM_SETSELECTION only understands UNC paths as pidls,
@@ -1991,6 +2010,7 @@ ChooseDirectoryValidateProc (
 	    } else {
 		SendMessage(hwnd, BFFM_SETSELECTION, TRUE, (LPARAM)initDir);
 	    }
+#endif
 	    SendMessage(hwnd, BFFM_ENABLEOK, 0, (LPARAM) 1);
             break;
 	}
@@ -2044,9 +2064,11 @@ Tk_ChooseDirectoryObjCmd(clientData, interp, objc, objv)
 	DIR_INITIAL,	DIR_EXIST,	DIR_PARENT,	FILE_TITLE
     };
 
+#ifdef LBSELCHSTRING // not defined for Windows CE as of v3.0
     if (tsdPtr->WM_LBSELCHANGED == 0) {
         tsdPtr->WM_LBSELCHANGED = RegisterWindowMessage(LBSELCHSTRING);
     }
+#endif
    
     result = TCL_ERROR;
     path[0] = '\0';
@@ -2116,9 +2138,11 @@ Tk_ChooseDirectoryObjCmd(clientData, interp, objc, objv)
 #ifdef _WIN64
     ofn.hInstance		= (HINSTANCE) GetWindowLongPtr(ofn.hwndOwner, 
 					GWLP_HINSTANCE);
-#else
+#elif defined(GWL_HINSTANCE)
     ofn.hInstance		= (HINSTANCE) GetWindowLong(ofn.hwndOwner, 
 					GWL_HINSTANCE);
+#else // Windows CE does not define GWL_HINSTANCE as of v3.0
+    ofn.hInstance		= NULL;
 #endif
     ofn.lpstrFilter		= NULL;
     ofn.lpstrCustomFilter	= NULL;

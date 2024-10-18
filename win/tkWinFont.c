@@ -17,6 +17,13 @@
 #include "tkWinInt.h"
 #include "tkFont.h"
 
+#define USE_OLD_TEXTOUT 0
+#ifdef UNDER_CE
+#define USE_SETTEXTALIGN 0
+#else
+#define USE_SETTEXTALIGN 1
+#endif
+
 /*
  * The following structure represents a font family.  It is assumed that
  * all screen fonts constructed from the same "font family" share certain
@@ -32,7 +39,6 @@
 
 #define FONTMAP_PAGES	    	(1 << (sizeof(Tcl_UniChar)*8 - FONTMAP_SHIFT))
 #define FONTMAP_BITSPERPAGE	(1 << FONTMAP_SHIFT)
-
 typedef struct FontFamily {
     struct FontFamily *nextPtr;	/* Next in list of all known font families. */
     int refCount;		/* How many SubFonts are referring to this
@@ -52,6 +58,7 @@ typedef struct FontFamily {
     int isSymbolFont;		/* Non-zero if this is a symbol font. */
     int isWideFont;		/* 1 if this is a double-byte font, 0 
 				 * otherwise. */
+#if USE_OLD_TEXTOUT
     BOOL (WINAPI *textOutProc)(HDC, int, int, TCHAR *, int);
 				/* The procedure to use to draw text after
 				 * it has been converted from UTF-8 to the 
@@ -60,7 +67,7 @@ typedef struct FontFamily {
 				/* The procedure to use to measure text after
 				 * it has been converted from UTF-8 to the 
 				 * encoding of this font. */
-
+#endif
     char *fontMap[FONTMAP_PAGES];
 				/* Two-level sparse table used to determine
 				 * quickly if the specified character exists.
@@ -157,11 +164,13 @@ typedef struct CanUse {
  */
 
 static TkStateMap systemMap[] = {
+#ifdef ANSI_FIXED_FONT // not defined on Windows CE as of v3.0
     {ANSI_FIXED_FONT,	    "ansifixed"},
     {ANSI_VAR_FONT,	    "ansi"},
     {DEVICE_DEFAULT_FONT,   "device"},
     {OEM_FIXED_FONT,	    "oemfixed"},
     {SYSTEM_FIXED_FONT,	    "systemfixed"},
+#endif
     {SYSTEM_FONT,	    "system"},
     {-1,		    NULL}
 };
@@ -247,7 +256,8 @@ void
 TkpFontPkgInit(
     TkMainInfo *mainPtr)	/* The application being created. */
 {
-    if (TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT) {
+    if ((TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT)
+	    || (TkWinGetPlatformId() == VER_PLATFORM_WIN32_CE)) {
 	/*
 	 * If running NT, then we will be calling some Unicode functions 
 	 * explictly.  So, even if the Tcl system encoding isn't Unicode, 
@@ -485,12 +495,15 @@ TkpGetFontFamilies(
      * EnumFontFamilies because it only exists under NT.
      */
 
-    if (TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT) {
+    if ((TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT)
+	    || (TkWinGetPlatformId() == VER_PLATFORM_WIN32_CE)) {
 	EnumFontFamiliesW(hdc, NULL, (FONTENUMPROCW) WinFontFamilyEnumProc,
 		(LPARAM) interp);
+#ifndef UNDER_CE
     } else {
 	EnumFontFamiliesA(hdc, NULL, (FONTENUMPROCA) WinFontFamilyEnumProc,
 		(LPARAM) interp);
+#endif
     }	    
     ReleaseDC(hwnd, hdc);
 }
@@ -646,10 +659,17 @@ Tk_MeasureChars(
             Tcl_UtfToExternalDString(familyPtr->encoding, start, 
                     (int) (p - start), &runString);
             size.cx = 0;
+#if USE_OLD_TEXTOUT
             (*familyPtr->getTextExtentPoint32Proc)(hdc, 
                     Tcl_DStringValue(&runString),
                     Tcl_DStringLength(&runString) >> familyPtr->isWideFont,
                     &size);
+#else
+	    GetTextExtentPoint32W(hdc, 
+		    (WCHAR *) Tcl_DStringValue(&runString),
+		    Tcl_DStringLength(&runString) >> familyPtr->isWideFont,
+		    &size);
+#endif
             Tcl_DStringFree(&runString);
             if (maxLength >= 0 && (curX+size.cx) > maxLength) {
                 moretomeasure = 1;
@@ -675,10 +695,17 @@ Tk_MeasureChars(
         Tcl_UtfToExternalDString(familyPtr->encoding, start,
                 (int) (p - start), &runString);
         size.cx = 0;
+#if USE_OLD_TEXTOUT
 	(*familyPtr->getTextExtentPoint32Proc)(hdc,
 		Tcl_DStringValue(&runString),
 		Tcl_DStringLength(&runString) >> familyPtr->isWideFont, 
 		&size);
+#else
+	GetTextExtentPoint32W(hdc,
+		(WCHAR *) Tcl_DStringValue(&runString),
+		Tcl_DStringLength(&runString) >> familyPtr->isWideFont,
+		&size);
+#endif
         Tcl_DStringFree(&runString);
         if (maxLength >= 0 && (curX+size.cx) > maxLength) {
             moretomeasure = 1;
@@ -709,10 +736,17 @@ Tk_MeasureChars(
                     &dstWrote, NULL);
             Tcl_DStringAppend(&runString,buf,dstWrote);
             size.cx = 0;
+#if USE_OLD_TEXTOUT
             (*familyPtr->getTextExtentPoint32Proc)(hdc, 
                     Tcl_DStringValue(&runString),
                     Tcl_DStringLength(&runString) >> familyPtr->isWideFont,
                     &size);
+#else
+	    GetTextExtentPoint32W(hdc,
+		    (WCHAR *) Tcl_DStringValue(&runString),
+		    Tcl_DStringLength(&runString) >> familyPtr->isWideFont,
+		    &size);
+#endif
             if ((curX+size.cx) > maxLength) {
 		break;
 	    }
@@ -850,6 +884,9 @@ Tk_DrawChars(
 	HDC dcMem;
 	TEXTMETRIC tm;
 	SIZE size;
+#if USE_SETTEXTALIGN // not defined for Windows CE as of v3.0
+	UINT oldAlign;
+#endif
 
 	if (twdPtr->type != TWD_BITMAP) {
 	    Tcl_Panic("unexpected drawable type in stipple");
@@ -865,7 +902,11 @@ Tk_DrawChars(
 	SetBrushOrgEx(dc, gc->ts_x_origin, gc->ts_y_origin, NULL);
 	oldBrush = SelectObject(dc, stipple);
 
+#if USE_SETTEXTALIGN // not defined for Windows CE as of v3.0
+	oldAlign = GetTextAlign(dc);
+	SetTextAlign(dc, TA_LEFT | TA_BASELINE);
 	SetTextAlign(dcMem, TA_LEFT | TA_BASELINE);
+#endif
 	SetTextColor(dcMem, gc->foreground);
 	SetBkMode(dcMem, TRANSPARENT);
 	SetBkColor(dcMem, RGB(0, 0, 0));
@@ -906,8 +947,13 @@ Tk_DrawChars(
 	DeleteDC(dcMem);
 	SelectObject(dc, oldBrush);
 	DeleteObject(stipple);
+#if USE_SETTEXTALIGN // not defined for Windows CE as of v3.0
+	SetTextAlign(dc, oldAlign);
+#endif
     } else if (gc->function == GXcopy) {
+#if USE_SETTEXTALIGN // not defined for Windows CE as of v3.0
 	SetTextAlign(dc, TA_LEFT | TA_BASELINE);
+#endif
 	SetTextColor(dc, gc->foreground);
 	SetBkMode(dc, TRANSPARENT);
 	MultiFontTextOut(dc, fontPtr, source, numBytes, x, y);
@@ -919,7 +965,9 @@ Tk_DrawChars(
 
 	dcMem = CreateCompatibleDC(dc);
 
+#if USE_SETTEXTALIGN // not defined for Windows CE as of v3.0
 	SetTextAlign(dcMem, TA_LEFT | TA_BASELINE);
+#endif
 	SetTextColor(dcMem, gc->foreground);
 	SetBkMode(dcMem, TRANSPARENT);
 	SetBkColor(dcMem, RGB(0, 0, 0));
@@ -1002,13 +1050,34 @@ MultiFontTextOut(
 		familyPtr = lastSubFontPtr->familyPtr;
  		Tcl_UtfToExternalDString(familyPtr->encoding, source,
 			(int) (p - source), &runString);
-		(*familyPtr->textOutProc)(hdc, x-(tm.tmOverhang/2), y, 
+#if USE_OLD_TEXTOUT
+		(*familyPtr->textOutProc)(hdc, x-(tm.tmOverhang/2),
+#if USE_SETTEXTALIGN // not defined for Windows CE as of v3.0
+			y, 
+#else
+			y - tm.tmAscent,
+#endif
 			Tcl_DStringValue(&runString),
 			Tcl_DStringLength(&runString) >> familyPtr->isWideFont);
 		(*familyPtr->getTextExtentPoint32Proc)(hdc, 
 			Tcl_DStringValue(&runString),
 			Tcl_DStringLength(&runString) >> familyPtr->isWideFont, 
 			&size);
+#else
+		ExtTextOutW(hdc, x-(tm.tmOverhang/2),
+#if USE_SETTEXTALIGN // not defined for Windows CE as of v3.0
+			y, 
+#else
+			y - tm.tmAscent,
+#endif
+			0, NULL, (WCHAR *) Tcl_DStringValue(&runString),
+			Tcl_DStringLength(&runString) >> familyPtr->isWideFont,
+			NULL);
+		GetTextExtentPoint32W(hdc, 
+			(WCHAR *) Tcl_DStringValue(&runString),
+			Tcl_DStringLength(&runString) >> familyPtr->isWideFont,
+			&size);
+#endif
 		x += size.cx;
 		Tcl_DStringFree(&runString);
 	    }
@@ -1023,9 +1092,25 @@ MultiFontTextOut(
 	familyPtr = lastSubFontPtr->familyPtr;
  	Tcl_UtfToExternalDString(familyPtr->encoding, source,
 		(int) (p - source), &runString);
-	(*familyPtr->textOutProc)(hdc, x-(tm.tmOverhang/2), y,
+#if USE_OLD_TEXTOUT
+	(*familyPtr->textOutProc)(hdc, x-(tm.tmOverhang/2),
+#if USE_SETTEXTALIGN
+		y, 
+#else
+		y - tm.tmAscent,
+#endif
                 Tcl_DStringValue(&runString),
 		Tcl_DStringLength(&runString) >> familyPtr->isWideFont);
+#else
+	ExtTextOutW(hdc, x-(tm.tmOverhang/2),
+#if USE_SETTEXTALIGN
+		y, 
+#else
+		y - tm.tmAscent,
+#endif
+		0, NULL, (WCHAR *) Tcl_DStringValue(&runString),
+		Tcl_DStringLength(&runString) >> familyPtr->isWideFont, NULL);
+#endif
 	Tcl_DStringFree(&runString);
     }
     SelectObject(hdc, oldFont);
@@ -1098,10 +1183,13 @@ InitFont(
      * version of GetTextFace because it only exists under NT.
      */
 
-    if (TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT) {
+    if ((TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT)
+	    || (TkWinGetPlatformId() == VER_PLATFORM_WIN32_CE)) {
 	GetTextFaceW(hdc, LF_FACESIZE, (WCHAR *) buf);
+#ifndef UNDER_CE
     } else {
 	GetTextFaceA(hdc, LF_FACESIZE, (char *) buf);
+#endif
     }
     Tcl_ExternalToUtfDString(systemEncoding, buf, -1, &faceString);
 
@@ -1275,10 +1363,13 @@ AllocFontFamily(
             Tcl_GetThreadData(&dataKey, sizeof(ThreadSpecificData));
 
     hFont = SelectObject(hdc, hFont);
-    if (TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT) {
+    if ((TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT)
+	    || (TkWinGetPlatformId() == VER_PLATFORM_WIN32_CE)) {
 	GetTextFaceW(hdc, LF_FACESIZE, (WCHAR *) buf);
+#ifndef UNDER_CE
     } else {
 	GetTextFaceA(hdc, LF_FACESIZE, (char *) buf);
+#endif
     }
     Tcl_ExternalToUtfDString(systemEncoding, buf, -1, &faceString);
     faceName = Tk_GetUid(Tcl_DStringValue(&faceString));
@@ -1335,6 +1426,23 @@ AllocFontFamily(
 	encoding = Tcl_GetEncoding(NULL, faceName);
     }
 
+#if USE_OLD_TEXTOUT
+#ifdef UNDER_CE
+    if (encoding == NULL) {
+	encoding = Tcl_GetEncoding(NULL, "unicode");
+	familyPtr->textOutProc =
+	    (BOOL (WINAPI *)(HDC, int, int, TCHAR *, int)) XCETextOutW;
+	familyPtr->getTextExtentPoint32Proc = 
+	    (BOOL (WINAPI *)(HDC, TCHAR *, int, LPSIZE)) XCEGetTextExtentPoint32W;
+	familyPtr->isWideFont = 1;
+    } else {
+	familyPtr->textOutProc = 
+	    (BOOL (WINAPI *)(HDC, int, int, TCHAR *, int)) XCETextOutA;
+	familyPtr->getTextExtentPoint32Proc = 
+	    (BOOL (WINAPI *)(HDC, TCHAR *, int, LPSIZE)) XCEGetTextExtentPoint32A;
+	familyPtr->isWideFont = 0;
+    } 
+#else
     if (encoding == NULL) {
 	encoding = Tcl_GetEncoding(NULL, "unicode");
 	familyPtr->textOutProc =
@@ -1349,6 +1457,13 @@ AllocFontFamily(
 	    (BOOL (WINAPI *)(HDC, TCHAR *, int, LPSIZE)) GetTextExtentPoint32A;
 	familyPtr->isWideFont = 0;
     } 
+#endif
+#else
+    if (encoding == NULL) {
+	encoding = Tcl_GetEncoding(NULL, "unicode");
+	familyPtr->isWideFont = 1;
+    }
+#endif
 
     familyPtr->encoding = encoding;
 
@@ -1540,12 +1655,15 @@ FindSubFontForChar(
     canUse.nameTriedPtr = &ds;
     canUse.ch = ch;
     canUse.subFontPtr = NULL;
-    if (TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT) {
+    if ((TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT)
+	    || (TkWinGetPlatformId() == VER_PLATFORM_WIN32_CE)) {
 	EnumFontFamiliesW(hdc, NULL, (FONTENUMPROCW) WinFontCanUseProc,
 		(LPARAM) &canUse);
+#ifndef UNDER_CE
     } else {
 	EnumFontFamiliesA(hdc, NULL, (FONTENUMPROCA) WinFontCanUseProc,
 		(LPARAM) &canUse);
+#endif
     }
     subFontPtr = canUse.subFontPtr;
 
@@ -1994,14 +2112,19 @@ GetScreenFont(
     lf.lfUnderline	= faPtr->underline;
     lf.lfStrikeOut	= faPtr->overstrike;
     lf.lfCharSet	= DEFAULT_CHARSET;
+#ifdef OUT_TT_PRECIS
     lf.lfOutPrecision	= OUT_TT_PRECIS;
+#else // not defined for Windows CE as of v3.0
+    lf.lfOutPrecision	= OUT_DEFAULT_PRECIS;
+#endif
     lf.lfClipPrecision	= CLIP_DEFAULT_PRECIS;
     lf.lfQuality	= DEFAULT_QUALITY;
     lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
 
     Tcl_UtfToExternalDString(systemEncoding, faceName, -1, &ds);
 
-    if (TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT) {
+    if ((TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT)
+	    || (TkWinGetPlatformId() == VER_PLATFORM_WIN32_CE)) {
 	Tcl_UniChar *src, *dst;
 
 	/*
@@ -2017,6 +2140,7 @@ GetScreenFont(
 	}
 	*dst = '\0';
 	hFont = CreateFontIndirectW(&lf);
+#ifndef UNDER_CE
     } else {
 	/*
 	 * We can only store up to LF_FACESIZE characters
@@ -2026,6 +2150,7 @@ GetScreenFont(
 	}
 	strcpy((char *) lf.lfFaceName, Tcl_DStringValue(&ds));
 	hFont = CreateFontIndirectA((LOGFONTA *) &lf);
+#endif
     }
     Tcl_DStringFree(&ds);
     return hFont;
@@ -2084,12 +2209,15 @@ FamilyExists(
      * non-zero value.
      */
 
-    if (TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT) {
+    if ((TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT)
+	    || (TkWinGetPlatformId() == VER_PLATFORM_WIN32_CE)) {
 	result = EnumFontFamiliesW(hdc, (WCHAR *) Tcl_DStringValue(&faceString),
 		(FONTENUMPROCW) WinFontExistProc, 0);
+#ifndef UNDER_CE
     } else {
 	result = EnumFontFamiliesA(hdc, (char *) Tcl_DStringValue(&faceString),
 		(FONTENUMPROCA) WinFontExistProc, 0);
+#endif
     }
     Tcl_DStringFree(&faceString);
     return (result == 0);

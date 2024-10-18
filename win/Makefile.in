@@ -117,6 +117,8 @@ TCL_GENERIC_NATIVE	= $(shell $(CYGPATH) '$(TCL_GENERIC_DIR)')
 TCL_SRC_DIR_NATIVE      = $(shell $(CYGPATH) '$(TCL_SRC_DIR)')
 RC_DIR_NATIVE      	= $(shell $(CYGPATH) '$(RC_DIR)')
 
+CELIB_DIR		= @CELIB_DIR@
+
 DLLSUFFIX		= @DLLSUFFIX@
 LIBSUFFIX		= @LIBSUFFIX@
 EXESUFFIX		= @EXESUFFIX@
@@ -336,6 +338,10 @@ TK_OBJS = \
 	tkStubInit.$(OBJEXT) \
 	tkStubLib.$(OBJEXT) \
 	tkWindow.$(OBJEXT)
+
+ifeq "$(findstring UNDER_CE,$(AC_FLAGS))" "UNDER_CE"
+TK_OBJS	+= tkWinCE.$(OBJEXT) tkWinCEMenu.$(OBJEXT)
+endif
 
 STUB_OBJS = \
 	tkStubLib.$(OBJEXT) \

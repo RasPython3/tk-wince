@@ -596,6 +596,15 @@ ScrollbarProc(hwnd, message, wParam, lParam)
 	}
 
 	default:
+#ifdef UNDER_CE
+	    /*
+	     * WinCE needs to catch these specially with its weird events
+	     */
+	    if (message == WM_LBUTTONUP || message == WM_MOUSEMOVE) {
+		return CallWindowProc(scrollPtr->oldProc, hwnd, message, 
+			wParam, lParam);
+	    }
+#endif
 	    if (Tk_TranslateWinEvent(hwnd, message, wParam, lParam, &result)) {
 		return result;
 	    }

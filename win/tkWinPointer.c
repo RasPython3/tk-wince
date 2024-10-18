@@ -56,6 +56,11 @@ TkWinGetModifierState()
 {
     int state = 0;
 
+#ifdef UNDER_CE
+    // GetKeyState does not return mouse state on ce...
+#define GetKeyState GetAsyncKeyState
+#endif
+
     if (GetKeyState(VK_SHIFT) & 0x8000) {
 	state |= ShiftMask;
     }

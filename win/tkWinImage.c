@@ -278,7 +278,7 @@ XCreateImage(display, visual, depth, format, offset, data, width, height,
  *
  *----------------------------------------------------------------------
  */
-
+#ifndef UNDER_CE
 static XImage *
 XGetImageZPixmap(display, d, x, y, width, height, plane_mask, format)
     Display* display;
@@ -528,6 +528,7 @@ XGetImageZPixmap(display, d, x, y, width, height, plane_mask, format)
 
     return ret_image;
 }
+#endif // UNDER_CE
 
 /*
  *----------------------------------------------------------------------
@@ -603,6 +604,7 @@ XGetImage(display, d, x, y, width, height, plane_mask, format)
 	}
 
 	TkWinReleaseDrawableDC(d, dc, &state);
+#ifndef UNDER_CE
     } else if (format == ZPixmap) {
 	/*
 	 * This actually handles most TWD_WINDOW requests, but it varies
@@ -612,6 +614,7 @@ XGetImage(display, d, x, y, width, height, plane_mask, format)
 	 */
 	imagePtr = XGetImageZPixmap(display, d, x, y,
 		width, height, plane_mask, format);
+#endif
     } else {
 	char *errMsg = NULL;
 	char infoBuf[sizeof(BITMAPINFO) + sizeof(RGBQUAD)];
@@ -624,6 +627,11 @@ XGetImage(display, d, x, y, width, height, plane_mask, format)
 	} else if (plane_mask != 1) {
 	    errMsg = "XGetImage: not implemented for plane_mask != 1";
 	}
+#ifdef UNDER_CE
+	if (errMsg != NULL) {
+	    errMsg = "XGetImage: not implemented on Windows CE";
+	}
+#endif
 	if (errMsg != NULL) {
 	    /*
 	     * Do a soft warning for the unsupported XGetImage types.
@@ -631,7 +639,7 @@ XGetImage(display, d, x, y, width, height, plane_mask, format)
 	    TkpDisplayWarning(errMsg, "XGetImage Failure");
 	    return NULL;
 	}
-
+#ifndef UNDER_CE
 	imagePtr = XCreateImage(display, NULL, 1, XYBitmap, 0, NULL,
 		width, height, 32, 0);
 	imagePtr->data = ckalloc(imagePtr->bytes_per_line * imagePtr->height);
@@ -656,6 +664,7 @@ XGetImage(display, d, x, y, width, height, plane_mask, format)
 	GetDIBits(dc, twdPtr->bitmap.handle, 0, height, imagePtr->data,
 		infoPtr, DIB_RGB_COLORS);
 	ReleaseDC(NULL, dc);
+#endif
     }
 
     return imagePtr;

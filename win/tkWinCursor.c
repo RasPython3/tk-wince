@@ -134,7 +134,15 @@ TkGetCursorByName(interp, tkwin, string)
 	    ckfree((char *) cursorPtr);
 	    return NULL;
 	}
+#ifdef UNDER_CE
+	Tcl_AppendResult(interp, "can't get cursor from a file on Windows CE",
+		(char *) NULL);
+	ckfree((char *) argv);
+	ckfree((char *) cursorPtr);
+	return NULL;
+#else
 	cursorPtr->winCursor = LoadCursorFromFile(&(argv[0][1]));
+#endif
     } else {
 	/*
 	 * Check for the cursor in the system cursor set.

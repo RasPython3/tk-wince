@@ -54,8 +54,7 @@ TkSelGetSelection(interp, tkwin, selection, target, proc, clientData)
     char *data, *destPtr;
     Tcl_DString ds;
     HGLOBAL handle;
-    Tcl_Encoding encoding;
-    int result, locale;
+    int result;
 
     if ((selection != Tk_InternAtom(tkwin, "CLIPBOARD"))
 	    || (target != XA_STRING)
@@ -81,11 +80,15 @@ TkSelGetSelection(interp, tkwin, selection, target, proc, clientData)
 		Tcl_UniCharLen((Tcl_UniChar *)data), &ds);
 	GlobalUnlock(handle);
     } else if (IsClipboardFormatAvailable(CF_TEXT)) {
+	Tcl_Encoding encoding = NULL;
 	/*
 	 * Determine the encoding to use to convert this text.
 	 */
 
+#ifdef CF_LOCALE // not defined for Windows CE as of v3.0
 	if (IsClipboardFormatAvailable(CF_LOCALE)) {
+	    int locale;
+
 	    handle = GetClipboardData(CF_LOCALE);
 	    if (!handle) {
 		CloseClipboard();
@@ -115,9 +118,8 @@ TkSelGetSelection(interp, tkwin, selection, target, proc, clientData)
 
 	    encoding = Tcl_GetEncoding(NULL, Tcl_DStringValue(&ds));
 	    Tcl_DStringFree(&ds);
-	} else {
-	    encoding = NULL;
 	}
+#endif
 
 	/*
 	 * Fetch the text and convert it to UTF.

@@ -18,6 +18,10 @@
 #include "tkCanvas.h"
 #include "tkPort.h"
 
+#ifdef UNDER_CE
+#define time xcetime
+#endif
+
 /*
  * See tkCanvas.h for key data structures used to implement canvases.
  */

@@ -33,6 +33,34 @@
 #include "tkPort.h"
 #endif
 
+/*
+ * Some functions require emulation under CE, and may not have the
+ * full functionality of the original.
+ */
+
+#ifdef UNDER_CE
+#ifndef CBM_INIT
+#define CBM_INIT 0x04L
+#endif
+#ifndef SS_OWNERDRAW
+#define SS_OWNERDRAW        0x0000000DL
+#endif
+HBITMAP CreateDIBitmap (HDC  hdc, BITMAPINFOHEADER *lpbmih, DWORD  fdwInit,
+	VOID *lpBits, BITMAPINFO *lpBitsInfo, UINT iUsage);
+
+BOOL CeArc(HDC hdc,
+	int nLeftRect, int nTopRect, int nRightRect, int nBottomRect,
+	int nXStartArc, int nYStartArc, int nXEndArc, int nYEndArc);
+BOOL CeChord(HDC hdc,
+	int nLeftRect, int nTopRect, int nRightRect, int nBottomRect,
+	int nXRadial1, int nYRadial1, int nXRadial2, int nYRadial2);
+BOOL CePie(HDC hdc,
+	int nLeftRect, int nTopRect, int nRightRect, int nBottomRect,
+	int nXRadial1, int nYRadial1, int nXRadial2, int nYRadial2);
+#define Arc	CeArc
+#define Chord	CeChord
+#define Pie	CePie
+#endif
 
 /*
  * Define constants missing from older Win32 SDK header files.
@@ -40,6 +68,12 @@
 
 #ifndef WS_EX_TOOLWINDOW
 #define WS_EX_TOOLWINDOW	0x00000080L 
+#endif
+#ifndef VER_PLATFORM_WIN32_WINDOWS
+#define VER_PLATFORM_WIN32_WINDOWS 1
+#endif
+#ifndef VER_PLATFORM_WIN32_CE
+#define VER_PLATFORM_WIN32_CE 3
 #endif
 
 /*

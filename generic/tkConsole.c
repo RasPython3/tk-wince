@@ -84,7 +84,14 @@ static Tcl_ChannelType consoleChannelType = {
 };
 
 
-#ifdef __WIN32__
+#ifdef UNDER_CE
+/*
+ * Windows CE should never use a console channel.
+ */
+
+#define ShouldUseConsoleChannel(chan) (0)
+
+#elif defined(WIN32)
 
 #include <windows.h>
 

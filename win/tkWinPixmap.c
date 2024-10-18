@@ -165,6 +165,9 @@ XGetGeometry(display, d, root_return, x_return, y_return, width_return,
     TkWinDrawable *twdPtr = (TkWinDrawable *)d;
 
     if (twdPtr->type == TWD_BITMAP) {
+#ifdef UNDER_CE
+        panic("XGetGeometry: cannot handle pixmap");
+#else
 	HDC dc;
 	BITMAPINFO info;
 
@@ -182,6 +185,7 @@ XGetGeometry(display, d, root_return, x_return, y_return, width_return,
 
         *width_return = info.bmiHeader.biWidth;
         *height_return = info.bmiHeader.biHeight;
+#endif
     } else if (twdPtr->type == TWD_WINDOW) {
 	RECT rect;
 

@@ -385,6 +385,17 @@ AC_DEFUN(SC_CONFIG_CFLAGS, [
     AC_ARG_ENABLE(64bit,[  --enable-64bit          enable 64bit support (where applicable)], [do64bit=$enableval], [do64bit=no])
     AC_MSG_RESULT($do64bit)
 
+    # Cross-compiling options for Windows/CE builds
+
+    AC_MSG_CHECKING([if Windows/CE build is requested])
+    AC_ARG_ENABLE(wince,[  --enable-wince          enable Win/CE support (where applicable)], [doWince=$enableval], [doWince=no])
+    AC_MSG_RESULT($doWince)
+
+    AC_MSG_CHECKING([for Windows/CE celib directory])
+    AC_ARG_WITH(celib,[  --with-celib=DIR        use Windows/CE support library from DIR],
+	    CELIB_DIR=$withval, CELIB_DIR=NO_CELIB)
+    AC_MSG_RESULT([$CELIB_DIR])
+
     # Set some defaults (may get changed below)
     EXTRA_CFLAGS=""
 
@@ -573,7 +584,7 @@ AC_DEFUN(SC_CONFIG_CFLAGS, [
 	    fi
 	    # In order to work in the tortured autoconf environment,
 	    # we need to ensure that this path has no spaces
-	    MSSDK=$(cygpath -w -s "$MSSDK" | sed -e 's!\\!/!g')
+	    MSSDK=`cygpath -w -s "$MSSDK" | sed -e 's!\\\!/!g'`
 	    if test ! -d "${MSSDK}/bin/win64" ; then
 		AC_MSG_WARN("could not find 64-bit SDK to enable 64bit mode")
 		do64bit="no"
@@ -602,9 +613,77 @@ AC_DEFUN(SC_CONFIG_CFLAGS, [
 	    LINKBIN="link -link50compat"
 	fi
 
-	SHLIB_LD="${LINKBIN} -dll -nologo -incremental:no"
+	if test "$doWince" != "no" ; then
+	    # set defaults
+	    # Currently Tcl requires 300+
+	    CEVERSION=300;    # could be 211 300 301 ...
+	    TARGETCPU=ARM;    # could be ARM MIPS SH3 X86 ...
+	    PLATFORM="Pocket PC 2002"
+	    if test "$doWince" = "yes"; then
+		doWince="300,ARM,ARM,Pocket PC 2002"
+	    fi
+	    eval `echo $doWince | awk -F "," '{ \
+		if (length([$]1)) { printf "CEVERSION=%s\n", [$]1 }; \
+		if (length([$]2)) { printf "TARGETCPU=%s\n", toupper([$]2) }; \
+		if (length([$]3)) { printf "ARCH=%s\n", toupper([$]3) }; \
+		if (length([$]4)) { printf "PLATFORM=%s\n", [$]4 }; \
+		}'`
+	    OSVERSION=WCE$CEVERSION;
+	    if test "x${ARCH}" = "x" ; then
+	        ARCH=$TARGETCPU;  # could be ARM MIPS SH3 X86 X86EM ...
+	    fi
+	    if test "x${WCEROOT}" = "x" ; then
+		WCEROOT="C:/Program Files/Microsoft eMbedded Tools"
+	    fi
+	    if test "x${SDKROOT}" = "x" ; then
+		SDKROOT="C:/Windows CE Tools"
+	    fi
+	    # In order to work in the tortured autoconf environment,
+	    # we need to ensure that this path has no spaces
+	    WCEROOT=`cygpath -w -s "$WCEROOT" | sed -e 's!\\\!/!g'`
+	    SDKROOT=`cygpath -w -s "$SDKROOT" | sed -e 's!\\\!/!g'`
+	    CELIB_DIR=`cygpath -w -s "$CELIB_DIR" | sed -e 's!\\\!/!g'`
+	    if test ! -d "${SDKROOT}/${OSVERSION}/${PLATFORM}/Lib/${TARGETCPU}"\
+		-o ! -d "${WCEROOT}/EVC/${OSVERSION}/bin"; then
+		AC_MSG_ERROR([could not find PocketPC SDK or target compiler to enable WinCE mode [$CEVERSION,$TARGETCPU,$ARCH,$PLATFORM]])
+		doWince="no"
+	    else
+		CEINCLUDE=`cygpath -w -s "${SDKROOT}/${OSVERSION}/${PLATFORM}/include" | sed -e 's!\\\!/!g'`
+		CELIBPATH=`cygpath -w -s "${SDKROOT}/${OSVERSION}/${PLATFORM}/Lib/${TARGETCPU}" | sed -e 's!\\\!/!g'`
+	    fi
+	fi
+
+	if test "$doWince" != "no" ; then
+	    if test "${TARGETCPU}" = "X86"; then
+	        CC="${WCEROOT}/EVC/${OSVERSION}/bin/cl.exe -I\"\${CELIB_DIR}/inc\" -I\"${CEINCLUDE}\""
+	    else
+	        CC="${WCEROOT}/EVC/${OSVERSION}/bin/cl${TARGETCPU}.exe -I\"\${CELIB_DIR}/inc\" -I\"${CEINCLUDE}\""
+	    fi
+	    RC="${WCEROOT}/Common/EVC/bin/rc.exe"
+	    cpulower=`echo ${TARGETCPU} | awk '{print tolower([$]0)}'`
+	    defs="${TARGETCPU} _${TARGETCPU}_ ${cpulower} _${cpulower}_ POCKET_SIZE PALM_SIZE _MT _DLL _WINDOWS"
+	    for i in $defs ; do
+		AC_DEFINE_UNQUOTED($i)
+	    done
+	    if test "${ARCH}" = "X86EM"; then
+		#AC_DEFINE_UNQUOTED(_WIN32_WCE_EMULATION)
+	    fi
+	    AC_DEFINE_UNQUOTED(_WIN32_WCE, $CEVERSION)
+	    AC_DEFINE_UNQUOTED(UNDER_CE, $CEVERSION)
+	    CFLAGS_DEBUG="-nologo -Zi -Od"
+	    CFLAGS_OPTIMIZE="-nologo -Ox"
+	    lflags="-nodefaultlib -MACHINE:${TARGETCPU} -LIBPATH:\"${CELIBPATH}\" -subsystem:windowsce,3.00"
+	    STLIB_LD="${WCEROOT}/EVC/${OSVERSION}/bin/lib.exe -nologo ${lflags}"
+	    LINKBIN="${WCEROOT}/EVC/${OSVERSION}/bin/link.exe ${lflags}"
+	    AC_SUBST(CELIB_DIR)
+	    LIBS="\${CELIB_DIR}/wince-${ARCH}-pocket-${OSVERSION}-release/celib.lib coredll.lib corelibc.lib winsock.lib"
+	    LIBS_GUI="commctrl.lib"
+	else
 	LIBS="user32.lib advapi32.lib"
 	LIBS_GUI="gdi32.lib comdlg32.lib imm32.lib comctl32.lib shell32.lib"
+	fi
+
+	SHLIB_LD="${LINKBIN} -dll -nologo -incremental:no"
 	RC_OUT=-fo
 	RC_TYPE=-r
 	RC_INCLUDE=-i
@@ -626,8 +705,13 @@ AC_DEFUN(SC_CONFIG_CFLAGS, [
 
 	# Specify linker flags depending on the type of app being 
 	# built -- Console vs. Window.
+	if test "$doWince" != "no" -a "${TARGETCPU}" != "X86"; then
+	    LDFLAGS_CONSOLE="-link ${lflags}"
+	    LDFLAGS_WINDOW=${LDFLAGS_CONSOLE}
+	else
 	LDFLAGS_CONSOLE="-link -subsystem:console ${lflags}"
 	LDFLAGS_WINDOW="-link -subsystem:windows ${lflags}"
+    fi
     fi
 
     # DL_LIBS is empty, but then we match the Unix version

@@ -384,8 +384,12 @@ XAllocColor(display, colormap, color)
 		}
 	    } else {
 		cmap->size++;
+#ifdef UNDER_CE
+		panic("ResizePalette not implemented");
+#else
 		ResizePalette(cmap->palette, cmap->size);
 		SetPaletteEntries(cmap->palette, cmap->size - 1, 1, &entry);
+#endif
 	    }
 	}
 

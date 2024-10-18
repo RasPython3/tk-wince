@@ -15,6 +15,9 @@
 #define OEMRESOURCE
 #include "tkWinInt.h"
 #include "tkMenu.h"
+#ifdef UNDER_CE
+#include "tkWinCEMenu.h"
+#endif
 
 #include <string.h>
 
@@ -532,6 +535,9 @@ ReconfigureWindowsMenu(
     int i, count, systemMenu = 0, base;
     int width, height;
     Tcl_DString translatedText;
+#ifdef UNDER_CE
+    WCHAR wbuf[256];
+#endif
   
     if (NULL == winMenuHdl) {
     	return;
@@ -550,7 +556,11 @@ ReconfigureWindowsMenu(
     }
 
     base = (menuPtr->menuFlags & MENU_SYSTEM_MENU) ? 7 : 0;
+#ifdef UNDER_CE
+    count = WCEGetMenuItemCount(winMenuHdl);
+#else
     count = GetMenuItemCount(winMenuHdl);
+#endif
     for (i = base; i < count; i++) {
 	RemoveMenu(winMenuHdl, base, MF_BYPOSITION);
     }
@@ -572,6 +582,10 @@ ReconfigureWindowsMenu(
 		|| (menuPtr->menuFlags & MENU_SYSTEM_MENU)) {
 	    Tcl_UtfToExternalDString(NULL, itemText, -1, &translatedText);
 	    lpNewItem = Tcl_DStringValue(&translatedText);
+#ifdef UNDER_CE
+	    MultiByteToWideChar(CP_ACP, 0, lpNewItem, -1, wbuf, 126);
+	    lpNewItem = (const TCHAR *) wbuf;
+#endif
 	} else {
 	    lpNewItem = (LPCTSTR) mePtr;
 	    flags |= MF_OWNERDRAW;
@@ -681,7 +695,11 @@ ReconfigureWindowsMenu(
 
     if ((menuPtr->menuType == MENUBAR) 
 	    && (menuPtr->parentTopLevelPtr != NULL)) {
+#ifdef UNDER_CE
+	WCEDrawMenuBar(TkWinGetWrapperWindow(menuPtr->parentTopLevelPtr));
+#else
 	DrawMenuBar(TkWinGetWrapperWindow(menuPtr->parentTopLevelPtr));
+#endif
 	Tk_GeometryRequest(menuPtr->parentTopLevelPtr, width, height);
     }
     
@@ -765,6 +783,7 @@ TkpPostMenu(interp, menuPtr, x, y)
      */
 
     flags = TPM_LEFTALIGN;
+#ifdef SM_SWAPBUTTON // not defined for Windows CE as of v3.0
     if (GetSystemMetrics(SM_SWAPBUTTON)) {
 	if (GetAsyncKeyState(VK_LBUTTON) < 0) {
 	    flags |= TPM_RIGHTBUTTON;
@@ -778,6 +797,7 @@ TkpPostMenu(interp, menuPtr, x, y)
 	    flags |= TPM_LEFTBUTTON;
 	}
     }
+#endif
 
     TrackPopupMenu(winMenuHdl, flags, x, y, 0, 
 	    tsdPtr->menuHWND, &noGoawayRect);
@@ -900,6 +920,7 @@ TkWinHandleMenuEvent(phwnd, pMessage, pwParam, plParam, plResult)
             Tcl_GetThreadData(&dataKey, sizeof(ThreadSpecificData));
 
     switch (*pMessage) {
+#ifdef WM_INITMENU // not defined for Windows CE as of v3.0
 	case WM_INITMENU:
 	    TkMenuInit();
 	    hashEntryPtr = Tcl_FindHashEntry(&tsdPtr->winMenuTable, 
@@ -935,6 +956,7 @@ TkWinHandleMenuEvent(phwnd, pMessage, pwParam, plParam, plResult)
 		tsdPtr->modalMenuPtr = NULL;
 	    }
 	    break;
+#endif
 
 	case WM_SYSCOMMAND:
 	case WM_COMMAND: {
@@ -1108,6 +1130,7 @@ TkWinHandleMenuEvent(phwnd, pMessage, pwParam, plParam, plResult)
 	    break;
 	}
 
+#ifdef WM_MENUSELECT // not defined for Windows CE as of v3.0
 	case WM_MENUSELECT: {
 	    UINT flags = HIWORD(*pwParam);
 
@@ -1155,6 +1178,7 @@ TkWinHandleMenuEvent(phwnd, pMessage, pwParam, plParam, plResult)
 	    }
 	    break;
 	}
+#endif
     }
     return returnResult;
 }
@@ -1233,7 +1257,12 @@ TkpSetWindowMenuBar(tkwin, menuPtr)
 	hashEntryPtr = Tcl_FindHashEntry(&tsdPtr->winMenuTable, 
                 (char *) winMenuHdl);
 	Tcl_DeleteHashEntry(hashEntryPtr);
+#ifndef UNDER_CE
+	/*
+	 * The main window handle must not be destroyed (wince)!
+	 */
 	DestroyMenu(winMenuHdl);
+#endif
 	winMenuHdl = CreateMenu();
 	hashEntryPtr = Tcl_CreateHashEntry(&tsdPtr->winMenuTable, 
                 (char *) winMenuHdl, &newEntry);
@@ -1443,6 +1472,9 @@ DrawWindowsSystemBitmap(display, drawable, gc, rectPtr, bitmapID, alignFlags)
     int alignFlags;			/* How to align the bitmap inside the
 					 * rectangle. */
 {
+#ifdef UNDER_CE
+    return;
+#else
     TkWinDCState state;
     HDC hdc = TkWinGetDrawableDC(display, drawable, &state);
     HDC scratchDC;
@@ -1490,6 +1522,7 @@ DrawWindowsSystemBitmap(display, drawable, gc, rectPtr, bitmapID, alignFlags)
     DeleteObject(bitmap);
 
     TkWinReleaseDrawableDC(drawable, hdc, &state);
+#endif // UNDER_CE
 }
 
 /*
@@ -1523,6 +1556,9 @@ DrawMenuEntryIndicator(menuPtr, mePtr, d, gc, indicatorGC, tkfont, fmPtr, x,
     int width;
     int height;
 {
+#ifdef UNDER_CE
+    return;
+#else
     if ((mePtr->type == CHECK_BUTTON_ENTRY) 
 	    || (mePtr->type == RADIO_BUTTON_ENTRY)) {
     	if (mePtr->indicatorOn && (mePtr->entryFlags & ENTRY_SELECTED)) {
@@ -1563,6 +1599,7 @@ DrawMenuEntryIndicator(menuPtr, mePtr, d, gc, indicatorGC, tkfont, fmPtr, x,
 		    OBM_CHECK, 0);
 	}
     }    
+#endif // UNDER_CE
 }
 
 /*
@@ -1603,6 +1640,9 @@ DrawMenuEntryAccelerator(menuPtr, mePtr, d, gc, tkfont, fmPtr,
 					 * out Windows' algorithm for where
 					 * to draw this. */
 {
+#ifdef UNDER_CE
+    return;
+#else
     int baseline;
     int leftEdge = x + mePtr->indicatorSpace + mePtr->labelWidth;
     char *accel;
@@ -1652,6 +1692,7 @@ DrawMenuEntryAccelerator(menuPtr, mePtr, d, gc, tkfont, fmPtr,
 	DrawWindowsSystemBitmap(menuPtr->display, d, gc, &rect, OBM_MNARROW, 
 		ALIGN_BITMAP_RIGHT);
     }
+#endif // UNDER_CE
 }
 
 /*
@@ -2790,7 +2831,9 @@ SetDefaults(
     TEXTMETRIC tm;
     int pointSize;
     HFONT menuFont;
+#ifndef UNDER_CE
     NONCLIENTMETRICS ncMetrics;
+#endif
 
     /*
      * Set all of the default options. The loop will terminate when we run 
@@ -2808,10 +2851,14 @@ SetDefaults(
     }
     Tcl_DStringInit(&menuFontDString);
 
+#ifdef UNDER_CE
+    menuFont = GetStockObject(SYSTEM_FONT);
+#else
     ncMetrics.cbSize = sizeof(ncMetrics);
     SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(ncMetrics),
 	    &ncMetrics, 0);
     menuFont = CreateFontIndirect(&ncMetrics.lfMenuFont);
+#endif
     SelectObject(scratchDC, menuFont);
     GetTextMetrics(scratchDC, &tm);
     GetTextFace(scratchDC, LF_FACESIZE, faceName);
@@ -2855,6 +2902,10 @@ SetDefaults(
      * documented.
      */
 
+#ifdef UNDER_CE
+    indicatorDimensions[0] = 10;
+    indicatorDimensions[1] = 10;
+#else
     if (TkWinGetPlatformId() >= VER_PLATFORM_WIN32_WINDOWS) {
 	indicatorDimensions[0] = GetSystemMetrics(SM_CYMENUCHECK);
 	indicatorDimensions[1] = ((GetSystemMetrics(SM_CXFIXEDFRAME) +
@@ -2866,6 +2917,7 @@ SetDefaults(
 	indicatorDimensions[0] = HIWORD(dimensions);
 	indicatorDimensions[1] = LOWORD(dimensions);
    }
+#endif // UNDER_CE
 }
 
 /*
@@ -2891,7 +2943,11 @@ TkpMenuInit()
     ThreadSpecificData *tsdPtr = (ThreadSpecificData *) 
             Tcl_GetThreadData(&dataKey, sizeof(ThreadSpecificData));
 
+#ifdef UNDER_CE
+    wndClass.style = CS_HREDRAW | CS_VREDRAW;
+#else
     wndClass.style = CS_OWNDC;
+#endif
     wndClass.lpfnWndProc = TkWinMenuProc;
     wndClass.cbClsExtra = 0;
     wndClass.cbWndExtra = 0;

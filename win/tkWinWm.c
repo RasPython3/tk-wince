@@ -18,6 +18,14 @@
 #include "tkWinInt.h"
 #include <shellapi.h>
 
+#ifdef UNDER_CE
+#include "tkWinCEMenu.h"
+void wince_putwinhandles(HWND hWndOld, HWND hWndNew);
+HWND wince_getwinhandle(HWND hWndOld);
+#define ID_MAINMENU   100
+TkWindow *WinCERecreateChild(TkWindow *winPtr, HWND hWrapper, DWORD dwStyle);
+#endif
+
 /*
  * Event structure for synthetic activation events.  These events are
  * placed on the event queue whenever a toplevel gets a WM_MOUSEACTIVATE
@@ -426,8 +434,6 @@ static WinIconPtr       GetIconFromPixmap _ANSI_ARGS_((Display *dsPtr,
 						       Pixmap pixmap));
 static int     		ReadICOHeader _ANSI_ARGS_((Tcl_Channel channel));
 static BOOL 		AdjustIconImagePointers _ANSI_ARGS_((LPICONIMAGE lpImage));
-static HICON 		MakeIconOrCursorFromResource 
-                            _ANSI_ARGS_((LPICONIMAGE lpIcon, BOOL isIcon));
 static HICON 		GetIcon _ANSI_ARGS_((WinIconPtr titlebaricon, 
 			    int icon_size));
 static int 		WinSetIcon _ANSI_ARGS_((Tcl_Interp *interp,
@@ -559,8 +565,7 @@ DIBNumColors( LPSTR lpbi )
 
     wBitCount = ((LPBITMAPINFOHEADER) lpbi)->biBitCount;
 
-    switch (wBitCount)
-    {
+    switch (wBitCount) {
 	case 1: return 2;
 	case 4: return 16;
 	case 8:	return 256;
@@ -655,7 +660,7 @@ BytesPerLine( LPBITMAPINFOHEADER lpBMIH )
  *----------------------------------------------------------------------
  */
 static BOOL 
-AdjustIconImagePointers( LPICONIMAGE lpImage )
+AdjustIconImagePointers(LPICONIMAGE lpImage)
 {
     /*  Sanity check */
     if (lpImage==NULL)
@@ -678,60 +683,6 @@ AdjustIconImagePointers( LPICONIMAGE lpImage )
     lpImage->lpAND = lpImage->lpXOR + (lpImage->Height*
 		BytesPerLine((LPBITMAPINFOHEADER)(lpImage->lpbi)));
     return TRUE;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * MakeIconOrCursorFromResource --
- *
- *	Construct an actual HICON structure from the information
- *	in a resource.
- *
- * Results:
- *
- *
- * Side effects:
- *
- *
- *----------------------------------------------------------------------
- */
-static HICON 
-MakeIconOrCursorFromResource(LPICONIMAGE lpIcon, BOOL isIcon) {
-    HICON hIcon ;
-    static FARPROC pfnCreateIconFromResourceEx=NULL;
-    static int initinfo=0;
-    /*  Sanity Check */
-    if (lpIcon == NULL)
-	return NULL;
-    if (lpIcon->lpBits == NULL)
-	return NULL;
-    if (!initinfo) {
-	HMODULE hMod = GetModuleHandleA("USER32.DLL");
-	initinfo=1;
-	if (hMod){
-	    pfnCreateIconFromResourceEx = 
-	      GetProcAddress(hMod, "CreateIconFromResourceEx");
-	}
-    }
-    /*  Let the OS do the real work :) */
-    if (pfnCreateIconFromResourceEx!=NULL) {
-	hIcon = (HICON) (pfnCreateIconFromResourceEx)
-	(lpIcon->lpBits, lpIcon->dwNumBytes, isIcon, 0x00030000,
-	 (*(LPBITMAPINFOHEADER)(lpIcon->lpBits)).biWidth,
-	 (*(LPBITMAPINFOHEADER)(lpIcon->lpBits)).biHeight/2, 0);
-    } else {
-	 hIcon = NULL;
-    }
-    /*  It failed, odds are good we're on NT so try the non-Ex way */
-    if (hIcon == NULL)    {
-	/*  We would break on NT if we try with a 16bpp image */
-	if (lpIcon->lpbi->bmiHeader.biBitCount != 16) {
-	    hIcon = CreateIconFromResource(lpIcon->lpBits, lpIcon->dwNumBytes, 
-					   isIcon, 0x00030000);
-	}
-    }
-    return hIcon;
 }
 
 /*
@@ -845,6 +796,9 @@ InitWindowClass(WinIconPtr titlebaricon) {
 	    class.style = CS_HREDRAW | CS_VREDRAW | CS_CLASSDC;
 #endif
 	    class.hInstance = Tk_GetHINSTANCE();
+#ifdef UNDER_CE
+	    class.hbrBackground = (HBRUSH) (COLOR_WINDOW + 1);
+#endif
 	    Tcl_WinUtfToTChar(TK_WIN_TOPLEVEL_CLASS_NAME, -1, &classString);
 	    class.lpszClassName = (LPCTSTR) Tcl_DStringValue(&classString);
 	    class.lpfnWndProc = WmProc;
@@ -970,6 +924,7 @@ WinSetIcon(interp, titlebaricon, tkw)
 	    }
 	} else {
 	    ThreadSpecificData *tsdPtr;
+#ifndef UNDER_CE
 	    if (
 #ifdef _WIN64
 		!SetClassLongPtr(hwnd, GCLP_HICONSM,
@@ -991,6 +946,7 @@ WinSetIcon(interp, titlebaricon, tkw)
 		 * return TCL_ERROR;
 		 */
 	    }
+#endif
 	    if (
 #ifdef _WIN64
 		!SetClassLongPtr(hwnd, GCLP_HICON,
@@ -1367,7 +1323,11 @@ GetIcon(WinIconPtr titlebaricon, int icon_size) {
 }
 
 static HCURSOR 
-TclWinReadCursorFromFile(Tcl_Interp* interp, Tcl_Obj* fileName) {
+TclWinReadCursorFromFile(Tcl_Interp* interp, Tcl_Obj* fileName)
+{
+#ifdef UNDER_CE
+    return NULL;
+#else
     BlockOfIconImagesPtr lpIR;
     HICON res = NULL;
     
@@ -1380,6 +1340,7 @@ TclWinReadCursorFromFile(Tcl_Interp* interp, Tcl_Obj* fileName) {
     }
     FreeIconBlock(lpIR);
     return res;
+#endif
 }
 
 /*
@@ -1400,123 +1361,123 @@ TclWinReadCursorFromFile(Tcl_Interp* interp, Tcl_Obj* fileName) {
  *----------------------------------------------------------------------
  */
 static BlockOfIconImagesPtr 
-ReadIconOrCursorFromFile(Tcl_Interp* interp, Tcl_Obj* fileName, BOOL isIcon) {
-    BlockOfIconImagesPtr lpIR, lpNew;
+ReadIconOrCursorFromFile(Tcl_Interp* interp, Tcl_Obj* fileName, BOOL isIcon)
+{
+#ifdef UNDER_CE
+    Tcl_AppendResult(interp, "Error opening file \"", 
+	    Tcl_GetString(fileName), "\" for reading", (char*) NULL);
+    return NULL;
+#else
+    BlockOfIconImagesPtr lpNew, lpIR = NULL;
     Tcl_Channel          channel;
     int                  i;
     DWORD            	 dwBytesRead;
     LPICONDIRENTRY    	 lpIDE;
+    LPICONIMAGE	         lpIcon;
+    char *errMsg = NULL;
 
     /*  Open the file */
     channel = Tcl_FSOpenFileChannel(interp, fileName, "r", 0);
     if (channel == NULL) {
-	Tcl_AppendResult(interp,"Error opening file \"", 
-			 Tcl_GetString(fileName), 
-	                 "\" for reading",(char*)NULL);
+	Tcl_AppendResult(interp, "Error opening file \"", 
+		Tcl_GetString(fileName), "\" for reading", (char*) NULL);
 	return NULL;
     }
-    if (Tcl_SetChannelOption(interp, channel, "-translation", "binary")
-	    != TCL_OK) {
-	Tcl_Close(NULL, channel);
-	return NULL;
-    }
-    if (Tcl_SetChannelOption(interp, channel, "-encoding", "binary")
-	    != TCL_OK) {
+    if ((Tcl_SetChannelOption(interp, channel, "-translation", "binary")
+	    != TCL_OK) || (Tcl_SetChannelOption(interp, channel,
+		    "-encoding", "binary") != TCL_OK)) {
 	Tcl_Close(NULL, channel);
 	return NULL;
     }
     /*  Allocate memory for the resource structure */
     lpIR = (BlockOfIconImagesPtr) ckalloc(sizeof(BlockOfIconImages));
     if (lpIR == NULL)    {
-	Tcl_AppendResult(interp,"Error allocating memory",(char*)NULL);
-	Tcl_Close(NULL, channel);
-	return NULL;
+	errMsg = "Error allocating memory";
+	goto error;
     }
     /*  Read in the header */
-    if ((lpIR->nNumImages = ReadICOHeader( channel )) == -1)    {
-	Tcl_AppendResult(interp,"Invalid file header",(char*)NULL);
-	Tcl_Close(NULL, channel);
-	ckfree((char*) lpIR );
-	return NULL;
+    if ((lpIR->nNumImages = ReadICOHeader(channel)) == -1) {
+	errMsg = "Invalid file header";
+	goto error;
     }
     /*  Adjust the size of the struct to account for the images */
     lpNew = (BlockOfIconImagesPtr) ckrealloc((char*)lpIR, 
-	sizeof(BlockOfIconImages) + ((lpIR->nNumImages-1) * sizeof(ICONIMAGE)));
+	    sizeof(BlockOfIconImages)
+	    + ((lpIR->nNumImages-1) * sizeof(ICONIMAGE)));
     if (lpNew == NULL) {
-	Tcl_AppendResult(interp,"Error allocating memory",(char*)NULL);
-	Tcl_Close(NULL, channel);
-	ckfree( (char*)lpIR );
-	return NULL;
+	errMsg = "Error allocating memory";
+	goto error;
     }
     lpIR = lpNew;
     /*  Allocate enough memory for the icon directory entries */
     lpIDE = (LPICONDIRENTRY) ckalloc(lpIR->nNumImages * sizeof(ICONDIRENTRY));
     if (lpIDE == NULL) {
-	Tcl_AppendResult(interp,"Error allocating memory",(char*)NULL);
-	Tcl_Close(NULL, channel);
-	ckfree( (char*)lpIR );
-	return NULL;
+	errMsg = "Error allocating memory";
+	goto error;
     }
     /*  Read in the icon directory entries */
-    dwBytesRead = Tcl_Read(channel, (char*)lpIDE, 
-			   lpIR->nNumImages * sizeof( ICONDIRENTRY ));
-    if (dwBytesRead != lpIR->nNumImages * sizeof( ICONDIRENTRY ))    {
-	Tcl_AppendResult(interp,"Error reading file",(char*)NULL);
-	Tcl_Close(NULL, channel);
-	ckfree( (char*)lpIR );
-	return NULL;
+    dwBytesRead = Tcl_Read(channel, (char*) lpIDE, 
+	    lpIR->nNumImages * sizeof(ICONDIRENTRY));
+    if (dwBytesRead != (lpIR->nNumImages * sizeof(ICONDIRENTRY))) {
+	errMsg = "Error reading file";
+	goto error;
     }
     /*  Loop through and read in each image */
-    for( i = 0; i < lpIR->nNumImages; i++ )    {
+    for (i = 0; i < lpIR->nNumImages; i++) {
 	/*  Allocate memory for the resource */
 	lpIR->IconImages[i].lpBits = (LPBYTE) ckalloc(lpIDE[i].dwBytesInRes);
 	if (lpIR->IconImages[i].lpBits == NULL) {
-	    Tcl_AppendResult(interp,"Error allocating memory",(char*)NULL);
-	    Tcl_Close(NULL, channel);
-	    ckfree( (char*)lpIR );
-	    ckfree( (char*)lpIDE );
-	    return NULL;
+	    ckfree((char*) lpIDE);
+	    errMsg = "Error allocating memory";
+	    goto error;
 	}
 	lpIR->IconImages[i].dwNumBytes = lpIDE[i].dwBytesInRes;
 	/*  Seek to beginning of this image */
 	if (Tcl_Seek(channel, lpIDE[i].dwImageOffset, FILE_BEGIN) == -1) {
-	    Tcl_AppendResult(interp,"Error seeking in file",(char*)NULL);
-	    Tcl_Close(NULL, channel);
-	    ckfree( (char*)lpIR );
-	    ckfree( (char*)lpIDE );
-	    return NULL;
+	    ckfree((char*) lpIDE);
+	    errMsg = "Error seeking in file";
+	    goto error;
 	}
 	/*  Read it in */
-	dwBytesRead = Tcl_Read( channel, lpIR->IconImages[i].lpBits, 
+	dwBytesRead = Tcl_Read(channel, lpIR->IconImages[i].lpBits, 
 			       lpIDE[i].dwBytesInRes);
 	if (dwBytesRead != lpIDE[i].dwBytesInRes) {
-	    Tcl_AppendResult(interp,"Error reading file",(char*)NULL);
-	    Tcl_Close(NULL, channel);
-	    ckfree( (char*)lpIDE );
-	    ckfree( (char*)lpIR );
-	    return NULL;
+	    ckfree((char*) lpIDE);
+	    errMsg = "Error reading file";
+	    goto error;
 	}
+	lpIcon = &(lpIR->IconImages[i]);
 	/*  Set the internal pointers appropriately */
-	if (!AdjustIconImagePointers( &(lpIR->IconImages[i]))) {
-	    Tcl_AppendResult(interp,"Error converting to internal format",
-			     (char*)NULL);
-	    Tcl_Close(NULL, channel);
-	    ckfree( (char*)lpIDE );
-	    ckfree( (char*)lpIR );
-	    return NULL;
+	if (!AdjustIconImagePointers(lpIcon)) {
+	    ckfree((char*) lpIDE);
+	    errMsg = "Error converting to internal format";
+	    goto error;
 	}
 	lpIR->IconImages[i].hIcon =
-	    MakeIconOrCursorFromResource(&(lpIR->IconImages[i]), isIcon);
+	    CreateIconFromResourceEx(lpIcon->lpBits,
+		    lpIcon->dwNumBytes, isIcon, 0x00030000,
+		    (*(LPBITMAPINFOHEADER)(lpIcon->lpBits)).biWidth,
+		    (*(LPBITMAPINFOHEADER)(lpIcon->lpBits)).biHeight/2, 0);
     }
     /*  Clean up */
-    ckfree((char*)lpIDE);
+    ckfree((char*) lpIDE);
     Tcl_Close(NULL, channel);
-    if (lpIR == NULL){
-	Tcl_AppendResult(interp,"Reading of ", Tcl_GetString(fileName),
-	" failed!",(char*)NULL);
-	return NULL;
+    if (lpIR == NULL) {
+	Tcl_AppendResult(interp, "Reading of ", Tcl_GetString(fileName),
+		" failed!", (char*) NULL);
     }
     return lpIR;
+
+    error:
+    if (errMsg) {
+	Tcl_AppendResult(interp, errMsg, (char*) NULL);
+    }
+    Tcl_Close(NULL, channel);
+    if (lpIR) {
+	ckfree((char*) lpIR);
+    }
+    return NULL;
+#endif // UNDER_CE
 }
 
 /*
@@ -1934,9 +1895,29 @@ UpdateWrapper(winPtr)
     SetWindowLongPtr(child, GWL_STYLE,
 	    WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
 #else
+#ifdef UNDER_CE
+    // SetWindowLongPtr does not seem to work UNDER_CE. No Child flag set.
+    // I have tried several combinations of call order here.
+    // Set window long must be masking it out...
+    // Only way around this would be to re-create the child and reparent
+    // all it's children...
+    oldWrapper = GetParent(child);
+
+    // this sets the WS_CHILD flag, but it does not fix
+    // the redisplay problems after a window move...
+
+    WinCERecreateChild(winPtr, wmPtr->wrapper, 
+		       WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
+
+    child = TkWinGetHWND(winPtr->window);
+
+    XCETrace("WM: Set WS_CHILD, new style after RecreateChild: %08x", 
+	     GetWindowLong(child, GWL_STYLE));
+#else
     SetWindowLong(child, GWL_STYLE,
 	    WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
-#endif
+#endif /* UNDER_CE */
+#endif /* _WIN64 */
     if (winPtr->flags & TK_EMBEDDED) {
 #ifdef _WIN64
 	SetWindowLongPtr(child, GWLP_WNDPROC, (LONG_PTR) TopLevelProc);
@@ -1944,6 +1925,8 @@ UpdateWrapper(winPtr)
 	SetWindowLong(child, GWL_WNDPROC, (LONG) TopLevelProc);
 #endif
     }
+
+#ifndef UNDER_CE
     oldWrapper = SetParent(child, wmPtr->wrapper);
     if (oldWrapper) {
 	hSmallIcon = (HICON) SendMessage(oldWrapper, WM_GETICON, ICON_SMALL,
@@ -1951,6 +1934,7 @@ UpdateWrapper(winPtr)
 	hBigIcon = (HICON) SendMessage(oldWrapper, WM_GETICON, ICON_BIG,
 		(LPARAM) NULL);
     }
+#endif
 
     if (oldWrapper && (oldWrapper != wmPtr->wrapper)
 	    && (oldWrapper != GetDesktopWindow())) {
@@ -1985,7 +1969,11 @@ UpdateWrapper(winPtr)
 	 * isn't destroyed.
 	 */
 
+#ifdef UNDER_CE
+	XCETrace("WM: WARN: Should save old menu");
+#else
 	SetMenu(oldWrapper, NULL);
+#endif
 	DestroyWindow(oldWrapper);
     }
 
@@ -2026,8 +2014,28 @@ UpdateWrapper(winPtr)
      */
 
     if (wmPtr->hMenu != NULL) {
+#ifdef UNDER_CE
+	WCE_MENU_INFO *pminfo;
+	HMENU hMainMenu;
+#endif
 	wmPtr->flags = WM_SYNC_PENDING;
+#ifdef UNDER_CE
+	XCETrace("WM: SetMenu in UpdateWrapper()");
+
+	pminfo = (WCE_MENU_INFO *) ckalloc(sizeof(*pminfo));
+	memset(pminfo, 0, sizeof(*pminfo));
+	pminfo->type       = 0;
+	pminfo->resid      = ID_MAINMENU;
+	pminfo->hwndParent = wmPtr->wrapper;
+	pminfo->hInst      = Tk_GetHINSTANCE();
+	XCETrace("WM: Creating new menu for hwnd 0x%x", wmPtr->wrapper);
+	// WmProc: msg = 55 = WM_NOTIFYFORMAT?!
+	hMainMenu = WCECreateMenu(pminfo);
+	XCETrace("WM: New Menu is 0x%x", hMainMenu);
+	WCESetMenu(wmPtr->wrapper, wmPtr->hMenu);
+#else
 	SetMenu(wmPtr->wrapper, wmPtr->hMenu);
+#endif
 	wmPtr->flags &= ~WM_SYNC_PENDING;
     }
 
@@ -2060,7 +2068,15 @@ UpdateWrapper(winPtr)
 
     if (tsdPtr->firstWindow) {
 	tsdPtr->firstWindow = 0;
+#ifdef UNDER_CE
+	// We have problems to actually show a completely
+	// painted window here...
+	SetForegroundWindow(wmPtr->wrapper);
 	SetActiveWindow(wmPtr->wrapper);
+	XCEShowNormalCursor();
+#else
+	SetActiveWindow(wmPtr->wrapper);
+#endif
     }
 }
 
@@ -2193,7 +2209,11 @@ TkpWmSetState(winPtr, state)
     if (state == WithdrawnState) {
 	cmd = SW_HIDE;
     } else if (state == IconicState) {
+#ifdef UNDER_CE
+	cmd = SW_SHOWNORMAL;
+#else
 	cmd = SW_SHOWMINNOACTIVE;
+#endif
     } else if (state == NormalState) {
 	cmd = SW_SHOWNOACTIVATE;
     } else if (state == ZoomState) {
@@ -5047,6 +5067,15 @@ UpdateGeometryInfo(clientData)
     rect.left = rect.right = rect.top = rect.bottom = 0;
     AdjustWindowRectEx(&rect, wmPtr->style, wmPtr->hMenu != NULL,
 	    wmPtr->exStyle);
+
+#ifdef UNDER_CE
+    if (wmPtr->hMenu && !WCEIsMenuAYG()) {
+	int h = WCEGetMenuHeight(wmPtr->wrapper);
+	XCETrace("WM: Adding menu height %d", h);
+	rect.bottom += h;
+    }
+#endif
+
     wmPtr->borderWidth = rect.right - rect.left;
     wmPtr->borderHeight = rect.bottom - rect.top;
 
@@ -5238,7 +5267,11 @@ UpdateGeometryInfo(clientData)
 	    }
 	}
 	if (!(wmPtr->flags & WM_NEVER_MAPPED)) {
+#ifdef UNDER_CE
+	    WCEDrawMenuBar(wmPtr->wrapper);
+#else
 	    DrawMenuBar(wmPtr->wrapper);
+#endif
 	}
     }
     wmPtr->flags &= ~WM_SYNC_PENDING;
@@ -6067,9 +6100,27 @@ TkWinSetMenu(tkwin, hMenu)
     if (!(wmPtr->flags & TK_EMBEDDED)) {
 	if (!(wmPtr->flags & WM_NEVER_MAPPED)) {
 	    int syncPending = wmPtr->flags & WM_SYNC_PENDING;
+#ifdef UNDER_CE
+	    WCE_MENU_INFO *pminfo;
+	    HMENU hMainMenu;
+#endif
 
 	    wmPtr->flags |= WM_SYNC_PENDING;
+#ifdef UNDER_CE
+	    XCETrace("WM: SetMenu in TkWinSetMenu()");
+	    pminfo = (WCE_MENU_INFO *) ckalloc(sizeof(*pminfo));
+	    memset(pminfo, 0, sizeof(*pminfo));
+	    pminfo->type       = 0;
+	    pminfo->resid      = ID_MAINMENU;
+	    pminfo->hwndParent = wmPtr->wrapper;
+	    pminfo->hInst      = Tk_GetHINSTANCE();
+	    XCETrace("WM: Creating menu for hwnd 0x%x", wmPtr->wrapper);
+	    hMainMenu = WCECreateMenu(pminfo);
+	    XCETrace("WM: Menu is 0x%x", hMainMenu);
+	    WCESetMenu(wmPtr->wrapper, hMenu);
+#else
 	    SetMenu(wmPtr->wrapper, hMenu);
+#endif
 	    if (!syncPending) {
 		wmPtr->flags &= ~WM_SYNC_PENDING;
 	    }
@@ -6127,13 +6178,27 @@ ConfigureTopLevel(pos)
 	    case SW_SHOWMAXIMIZED:
 		state = ZoomState;
 		break;
+#ifdef SW_SHOWMINIMIZED // not defined for Window CE as of v3.0
 	    case SW_SHOWMINIMIZED:
 		state = IconicState;
 		break;
+#endif
 	    case SW_SHOWNORMAL:
 		state = NormalState;
 		break;
 	}
+
+#ifdef UNDER_CE
+	// Undocumented high bits 6 seem to indicate SW_MINIMIZE
+	// Undocumented high bits 2 seem to indicate SW_MAXIMIZE
+	if ((pos->flags & 0xF0000000) == 0x60000000) {
+	    XCETrace("WM: Assuming IconicState");
+	    state = IconicState;
+	} else if ((pos->flags & 0xF0000000) == 0x20000000) {
+	    XCETrace("WM: Assuming ZoomState");
+	    state = ZoomState;
+	}
+#endif
     }
 
     /*
@@ -6176,7 +6241,6 @@ ConfigureTopLevel(pos)
 	return;
     }
 
-
     /*
      * Compute the current geometry of the client area, reshape the
      * Tk window and generate a ConfigureNotify event.
@@ -6188,8 +6252,25 @@ ConfigureTopLevel(pos)
     winPtr->changes.width = rect.right - rect.left;
     winPtr->changes.height = rect.bottom - rect.top;
     wmPtr->borderHeight = pos->cy - winPtr->changes.height;
+#ifdef UNDER_CE
+    {
+	int menuheight = 0;
+
+	if (wmPtr->hMenu && !WCEIsMenuAYG()) {
+	    // expand width
+	    menuheight = WCEGetMenuHeight(wmPtr->wrapper);
+	    MoveWindow(WCEGetMenuWindow(wmPtr->wrapper), 0, 0, 
+		    winPtr->changes.width, menuheight, TRUE);
+	    winPtr->changes.height -= menuheight;
+	}
+
+	MoveWindow(Tk_GetHWND(winPtr->window), 0, menuheight,
+		winPtr->changes.width, winPtr->changes.height, TRUE);
+    }
+#else
     MoveWindow(Tk_GetHWND(winPtr->window), 0, 0,
 	    winPtr->changes.width, winPtr->changes.height, TRUE);
+#endif
     GenerateConfigureNotify(winPtr);
 
     /*
@@ -6785,11 +6866,18 @@ WmProc(hwnd, message, wParam, lParam)
     }
 
     switch (message) {
+#ifdef UNDER_CE
+        case WM_EXITMENULOOP:
+	  // FIX: we must repaint client area, but does not work!
+	  return DefWindowProc(hwnd, message, wParam, lParam);
+#endif
+
 	case WM_KILLFOCUS:
 	case WM_ERASEBKGND:
 	    result = 0;
 	    goto done;
 
+#ifdef WM_ENTERSIZEMOVE // not defined for Windows CE as of v3.0
 	case WM_ENTERSIZEMOVE:
 	    inMoveSize = 1;
 
@@ -6803,19 +6891,24 @@ WmProc(hwnd, message, wParam, lParam)
 
 	    oldMode = Tcl_SetServiceMode(TCL_SERVICE_ALL);
 	    break;
+#endif
 
-	case WM_ACTIVATE:
+#ifdef WM_EXITSIZEMOVE // not defined for Windows CE as of v3.0
 	case WM_EXITSIZEMOVE:
+#endif
+	case WM_ACTIVATE:
 	    if (inMoveSize) {
 		inMoveSize = 0;
 		Tcl_SetServiceMode(oldMode);
 	    }
 	    break;
 
+#ifdef WM_GETMINMAXINFO // not defined for Windows CE as of v3.0
 	case WM_GETMINMAXINFO:
 	    SetLimits(hwnd, (MINMAXINFO *) lParam);
 	    result = 0;
 	    goto done;
+#endif
 
 	case WM_PALETTECHANGED:
 	    result = InstallColormaps(hwnd, WM_PALETTECHANGED,
@@ -6831,6 +6924,7 @@ WmProc(hwnd, message, wParam, lParam)
 	    result = 0;
 	    goto done;
 
+#ifdef WM_NCHITTEST // not defined for Windows CE as of v3.0
 	case WM_NCHITTEST: {
 	    winPtr = GetTopLevel(hwnd);
 	    if (winPtr && (TkGrabState(winPtr) == TK_GRAB_EXCLUDED)) {
@@ -6847,7 +6941,9 @@ WmProc(hwnd, message, wParam, lParam)
 	    }
 	    break;
 	}
+#endif
 
+#ifdef WM_MOUSEACTIVATE // not defined for Windows CE as of v3.0
 	case WM_MOUSEACTIVATE: {
 	    ActivateEvent *eventPtr;
 	    winPtr = GetTopLevel((HWND) wParam);
@@ -6878,6 +6974,7 @@ WmProc(hwnd, message, wParam, lParam)
 	    result = MA_NOACTIVATE;
 	    goto done;
 	}
+#endif
 
 	default:
 	    break;
@@ -7106,3 +7203,53 @@ TkWinSetForegroundWindow(winPtr)
 	SetForegroundWindow(Tk_GetHWND(winPtr->window));
     }
 }
+
+#ifdef UNDER_CE
+// Recreate the child window of the wrapper window, because
+// SetWindowLong(GWL_STYLE, WS_CHILD) does not work...
+
+// Problem: The old window might be referenced in font pointers!
+
+TkWindow *
+WinCERecreateChild(TkWindow *winPtr, HWND hWrapper, DWORD dwStyle)
+{
+    RECT r;
+    HWND hOldChild, hNewChild;
+    //Tcl_HashEntry *entryPtr;
+    TkWindow *childPtr;
+
+    ThreadSpecificData *tsdPtr = (ThreadSpecificData *) 
+	Tcl_GetThreadData(&dataKey, sizeof(ThreadSpecificData));
+
+    GetClientRect(hWrapper, &r);
+    hOldChild = Tk_GetHWND(winPtr->window);
+
+    hNewChild = CreateWindowEx(WS_EX_NOPARENTNOTIFY, 
+	    TK_WIN_CHILD_CLASS_NAME, NULL, dwStyle, 
+	    Tk_X(winPtr), Tk_Y(winPtr), 
+	    Tk_Width(winPtr), Tk_Height(winPtr), 
+	    hWrapper, NULL, Tk_GetHINSTANCE(), NULL);
+
+    XCETrace("WinCERecreateChild: hOldChild = %x hNewChild = %x", 
+	    hOldChild, hNewChild);
+
+    wince_putwinhandles(hOldChild, hNewChild);
+
+    // Reparent children
+    for (childPtr = winPtr->childList; 
+	 childPtr != NULL;
+	 childPtr = childPtr->nextPtr) {
+	if (childPtr->window != (Window) NULL) {
+	    SetParent(Tk_GetHWND(childPtr->window), hNewChild);
+	}
+    }
+
+    DestroyWindow(hOldChild);
+
+    // this automatically deletes old hash entry when windowhandle
+    // of winPtr is not null...
+    Tk_AttachHWND((Tk_Window)winPtr, hNewChild);
+
+    return winPtr;
+}
+#endif

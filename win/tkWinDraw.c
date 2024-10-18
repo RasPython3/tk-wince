@@ -323,8 +323,26 @@ XCopyArea(display, src, dest, gc, src_x, src_y, width, height, dest_x, dest_y)
     }
 
     if (clipPtr && clipPtr->type == TKP_CLIP_REGION) {
+#ifdef UNDER_CE
+	/*
+	 * OffsetClipRgn not defined for Windows CE v3.0, so simulate
+	 * it the slow way.
+	 */
+	HRGN rgn;
+	RECT rect;
+
+	GetRgnBox((HRGN) clipPtr->value.region, &rect);
+	rect.left   += gc->clip_x_origin;
+	rect.top    += gc->clip_y_origin;
+	rect.right  += gc->clip_x_origin;
+	rect.bottom += gc->clip_y_origin;
+	rgn = CreateRectRgnIndirect(&rect);
+	SelectClipRgn(destDC, (HRGN) rgn);
+	DeleteObject(rgn);
+#else
 	SelectClipRgn(destDC, (HRGN) clipPtr->value.region);
 	OffsetClipRgn(destDC, gc->clip_x_origin, gc->clip_y_origin);
+#endif
     }
 
     BitBlt(destDC, dest_x, dest_y, width, height, srcDC, src_x, src_y,
@@ -398,8 +416,26 @@ XCopyPlane(display, src, dest, gc, src_x, src_y, width, height, dest_x,
 	 */
 
 	if (clipPtr && clipPtr->type == TKP_CLIP_REGION) {
+#ifdef UNDER_CE
+	    /*
+	     * OffsetClipRgn not defined for Windows CE v3.0, so simulate
+	     * it the slow way.
+	     */
+	    HRGN rgn;
+	    RECT rect;
+
+	    GetRgnBox((HRGN) clipPtr->value.region, &rect);
+	    rect.left   += gc->clip_x_origin;
+	    rect.top    += gc->clip_y_origin;
+	    rect.right  += gc->clip_x_origin;
+	    rect.bottom += gc->clip_y_origin;
+	    rgn = CreateRectRgnIndirect(&rect);
+	    SelectClipRgn(destDC, (HRGN) rgn);
+	    DeleteObject(rgn);
+#else
 	    SelectClipRgn(destDC, (HRGN) clipPtr->value.region);
 	    OffsetClipRgn(destDC, gc->clip_x_origin, gc->clip_y_origin);
+#endif
 	}
 
 	SetBkMode(destDC, OPAQUE);
@@ -585,8 +621,13 @@ TkPutImage(colors, ncolors, display, d, gc, image, src_x, src_y, dest_x,
 	} else {
 	    infoPtr->bmiHeader.biClrUsed = 0;
 	}
+#ifdef UNDER_CE
+	bitmap = CreateDIBitmap(dc, &infoPtr->bmiHeader, CBM_INIT,
+		image, infoPtr, DIB_RGB_COLORS);
+#else
 	bitmap = CreateDIBitmap(dc, &infoPtr->bmiHeader, CBM_INIT,
 		image->data, infoPtr, DIB_RGB_COLORS);
+#endif
 	ckfree((char *) infoPtr);
     }
     if(!bitmap) {
@@ -814,8 +855,10 @@ RenderObject(dc, gc, points, npoints, mode, pen, func)
 	 * destination wherever the pattern is set.
 	 */
 
+#if defined(ALTERNATE) && defined(WINDING) // not on Windows CE as of v3.0
 	SetPolyFillMode(dcMem, (gc->fill_rule == EvenOddRule) ? ALTERNATE
 		: WINDING);
+#endif
 	oldMemBrush = SelectObject(dcMem, CreateSolidBrush(gc->foreground));
 	(*func)(dcMem, winPoints, npoints);
 	BitBlt(dc, rect.left, rect.top, width, height, dcMem, 0, 0, COPYFG);
@@ -843,8 +886,10 @@ RenderObject(dc, gc, points, npoints, mode, pen, func)
 	oldBrush = SelectObject(dc, CreateSolidBrush(gc->foreground));
 	SetROP2(dc, tkpWinRopModes[gc->function]);
 
+#if defined(ALTERNATE) && defined(WINDING) // not on Windows CE as of v3.0
 	SetPolyFillMode(dc, (gc->fill_rule == EvenOddRule) ? ALTERNATE
 		: WINDING);
+#endif
 
 	(*func)(dc, winPoints, npoints);
 
@@ -1154,7 +1199,7 @@ DrawOrFillArc(display, d, gc, x, y, width, height, start, extent, fill)
 	oldBrush = SelectObject(dc, brush);
 	if (gc->arc_mode == ArcChord) {
 	    Chord(dc, x, y, x+width+1, y+height+1, xstart, ystart, xend, yend);
-	} else if ( gc->arc_mode == ArcPieSlice ) {
+	} else if (gc->arc_mode == ArcPieSlice) {
 	    Pie(dc, x, y, x+width+1, y+height+1, xstart, ystart, xend, yend);
 	}
 	DeleteObject(SelectObject(dc, oldBrush));
@@ -1195,7 +1240,7 @@ SetUpGraphicsPort(gc)
 	 * but I don't know how to do it better.
 	 * Any ideas: <mailto:j.nijtmans@chello.nl>
 	 */
-
+#ifdef PS_DOT // not defined on Windows CE as of v3.0
 	if (p[1] && p[2]) {
 	    if (!p[3] || p[4]) {
 		style = PS_DASHDOTDOT;		/*	-..	*/
@@ -1209,6 +1254,9 @@ SetUpGraphicsPort(gc)
 		style = PS_DOT;			/*	.	*/
 	    }
 	}
+#else
+	style = PS_SOLID;
+#endif
     } else {
 	style = PS_SOLID;
     }
@@ -1221,6 +1269,7 @@ SetUpGraphicsPort(gc)
 	lb.lbColor = gc->foreground;
 	lb.lbHatch = 0;
 
+#ifdef PS_GEOMETRIC // not defined on Windows CE as of v3.0
 	style |= PS_GEOMETRIC;
 	switch (gc->cap_style) {
 	    case CapNotLast:
@@ -1245,6 +1294,7 @@ SetUpGraphicsPort(gc)
 		style |= PS_JOIN_BEVEL; 
 		break;
 	}
+#endif
 	return ExtCreatePen(style, gc->line_width, &lb, 0, NULL);
     }
 }

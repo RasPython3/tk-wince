@@ -17,7 +17,7 @@
  * The following declaration is for the VC++ DLL entry point.
  */
 
-BOOL APIENTRY		DllMain _ANSI_ARGS_((HINSTANCE hInst,
+BOOL APIENTRY		DllMain _ANSI_ARGS_((HANDLE hInst,
 			    DWORD reason, LPVOID reserved));
 
 /*
@@ -40,7 +40,7 @@ BOOL APIENTRY		DllMain _ANSI_ARGS_((HINSTANCE hInst,
 
 BOOL APIENTRY
 DllEntryPoint(hInst, reason, reserved)
-    HINSTANCE hInst;		/* Library instance handle. */
+    HANDLE hInst;		/* Library instance handle. */
     DWORD reason;		/* Reason this function is being called. */
     LPVOID reserved;		/* Not used. */
 {
@@ -68,7 +68,7 @@ DllEntryPoint(hInst, reason, reserved)
 
 BOOL APIENTRY
 DllMain(hInstance, reason, reserved)
-    HINSTANCE hInstance;
+    HANDLE hInstance;
     DWORD reason;
     LPVOID reserved;
 {

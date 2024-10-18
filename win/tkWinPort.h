@@ -53,8 +53,16 @@
 #endif /* _MSC_VER */
 
 #ifndef __GNUC__
+#  ifndef strncasecmp
 #    define strncasecmp strnicmp
+#  endif
+#  ifndef strcasecmp
 #    define strcasecmp stricmp
+#  endif
+#endif
+
+#ifdef UNDER_CE
+#undef time
 #endif
 
 #define NBBY 8

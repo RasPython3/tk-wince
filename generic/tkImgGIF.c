@@ -1735,7 +1735,7 @@ static int oblen;
 static int verbose_set = 0;
 static int verbose;
 #define MIGIF_VERBOSE (verbose_set?verbose:set_verbose())
-#define DEBUGMSG(printf_args) if (MIGIF_VERBOSE) { printf printf_args; }
+#define MIGIF_DEBUGMSG(printf_args) if (MIGIF_VERBOSE) { printf printf_args; }
 
 static int
 set_verbose(void)
@@ -1774,7 +1774,7 @@ binformat(v, nbits)
 #else
 
 #define MIGIF_VERBOSE 0
-#define DEBUGMSG(printf_args) /* do nothing */
+#define MIGIF_DEBUGMSG(printf_args) /* do nothing */
 
 #endif
 
@@ -1801,7 +1801,7 @@ static void
 block_out(c)
     unsigned char c;
 {
-    DEBUGMSG(("block_out %s\n", binformat(c, 8)));
+    MIGIF_DEBUGMSG(("block_out %s\n", binformat(c, 8)));
     oblock[oblen++] = c;
     if (oblen >= 255) {
 	write_block();
@@ -1811,7 +1811,7 @@ block_out(c)
 static void
 block_flush()
 {
-    DEBUGMSG(("block_flush\n"));
+    MIGIF_DEBUGMSG(("block_flush\n"));
     if (oblen > 0) {
 	write_block();
     }
@@ -1821,7 +1821,7 @@ static void
 output(val)
     int val;
 {
-    DEBUGMSG(("output %s [%s %d %d]\n", binformat(val, out_bits),
+    MIGIF_DEBUGMSG(("output %s [%s %d %d]\n", binformat(val, out_bits),
 	    binformat(obuf, obits), obits, out_bits));
     obuf |= val << obits;
     obits += out_bits;
@@ -1830,13 +1830,13 @@ output(val)
 	obuf >>= 8;
 	obits -= 8;
     }
-    DEBUGMSG(("output leaving [%s %d]\n", binformat(obuf, obits), obits));
+    MIGIF_DEBUGMSG(("output leaving [%s %d]\n", binformat(obuf, obits), obits));
 }
 
 static void
 output_flush()
 {
-    DEBUGMSG(("output_flush\n"));
+    MIGIF_DEBUGMSG(("output_flush\n"));
     if (obits > 0) {
 	block_out(obuf);
     }
@@ -1846,7 +1846,7 @@ output_flush()
 static void
 did_clear()
 {
-    DEBUGMSG(("did_clear\n"));
+    MIGIF_DEBUGMSG(("did_clear\n"));
     out_bits = out_bits_init;
     out_bump = out_bump_init;
     out_clear = out_clear_init;
@@ -1859,7 +1859,7 @@ static void
 output_plain(c)
     int c;
 {
-    DEBUGMSG(("output_plain %s\n", binformat(c, out_bits)));
+    MIGIF_DEBUGMSG(("output_plain %s\n", binformat(c, out_bits)));
     just_cleared = 0;
     output(c);
     out_count++;
@@ -1943,7 +1943,7 @@ rl_flush_fromclear(count)
 {
     int n;
 
-    DEBUGMSG(("rl_flush_fromclear %d\n", count));
+    MIGIF_DEBUGMSG(("rl_flush_fromclear %d\n", count));
     max_out_clear();
     rl_table_pixel = rl_pixel;
     n = 1;
@@ -1972,7 +1972,7 @@ rl_flush_fromclear(count)
 	}
     }
     reset_out_clear();
-    DEBUGMSG(("rl_flush_fromclear leaving table_max=%d\n", rl_table_max));
+    MIGIF_DEBUGMSG(("rl_flush_fromclear leaving table_max=%d\n", rl_table_max));
 }
 
 static void
@@ -1981,7 +1981,7 @@ rl_flush_clearorrep(count)
 {
     int withclr;
 
-    DEBUGMSG(("rl_flush_clearorrep %d\n", count));
+    MIGIF_DEBUGMSG(("rl_flush_clearorrep %d\n", count));
     withclr = 1 + compute_triangle_count(count, max_ocodes);
     if (withclr < count) {
 	output(code_clear);
@@ -2002,7 +2002,7 @@ rl_flush_withtable(count)
     int repleft;
     int leftover;
 
-    DEBUGMSG(("rl_flush_withtable %d\n", count));
+    MIGIF_DEBUGMSG(("rl_flush_withtable %d\n", count));
     repmax = count / rl_table_max;
     leftover = count % rl_table_max;
     repleft = (leftover ? 1 : 0);
@@ -2011,7 +2011,7 @@ rl_flush_withtable(count)
 	leftover = count - (repmax * rl_table_max);
 	repleft = 1 + compute_triangle_count(leftover, max_ocodes);
     }
-    DEBUGMSG(("rl_flush_withtable repmax=%d leftover=%d repleft=%d\n",
+    MIGIF_DEBUGMSG(("rl_flush_withtable repmax=%d leftover=%d repleft=%d\n",
 	    repmax, leftover, repleft));
     if (1+(int)compute_triangle_count(count, max_ocodes) < repmax+repleft) {
 	output(code_clear);
@@ -2038,11 +2038,11 @@ rl_flush_withtable(count)
 static void
 rl_flush()
 {
-    DEBUGMSG(("rl_flush [ %d %d\n", rl_count, rl_pixel));
+    MIGIF_DEBUGMSG(("rl_flush [ %d %d\n", rl_count, rl_pixel));
     if (rl_count == 1) {
 	output_plain(rl_pixel);
 	rl_count = 0;
-	DEBUGMSG(("rl_flush ]\n"));
+	MIGIF_DEBUGMSG(("rl_flush ]\n"));
 	return;
     }
     if (just_cleared) {
@@ -2052,7 +2052,7 @@ rl_flush()
     } else {
 	rl_flush_withtable(rl_count);
     }
-    DEBUGMSG(("rl_flush ]\n"));
+    MIGIF_DEBUGMSG(("rl_flush ]\n"));
     rl_count = 0;
 }
 
@@ -2084,7 +2084,7 @@ compress(init_bits, handle, readValue)
 	ocienv = getenv("MIGIF_OUT_CLEAR_INIT");
 	if (ocienv) {
 	    out_clear_init = atoi(ocienv);
-	    DEBUGMSG(("[overriding out_clear_init to %d]\n", out_clear_init));
+	    MIGIF_DEBUGMSG(("[overriding out_clear_init to %d]\n", out_clear_init));
 	}
     }
 #endif

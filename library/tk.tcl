@@ -577,3 +577,16 @@ if {[string equal [tk windowingsystem] "aqua"]} {
 	set useCustomMDEF 0
     }
 }
+
+if {[string equal "Windows CE" $::tcl_platform(os)]} {
+    # WinCE is for small screens, with 240x320 (QVGA) the most common.
+    # Adapt the defaults to that size.
+    option add *font			{Tahoma 7}
+    option add *Button*borderWidth	1
+    option add *Entry*borderWidth	1
+    option add *Listbox*borderWidth	1
+    option add *Spinbox*borderWidth	1
+    option add *Text*borderWidth	1
+    option add *Scrollbar*width		11
+    option add *padY			0
+}

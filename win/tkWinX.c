@@ -14,6 +14,9 @@
  */
 
 #include "tkWinInt.h"
+#ifdef UNDER_CE
+#include "tkWinCEMenu.h"
+#endif
 
 /*
  * The w32api 1.1 package (included in Mingw 1.1) does not define _WIN32_IE
@@ -31,7 +34,9 @@
  * The zmouse.h file includes the definition for WM_MOUSEWHEEL.
  */
 
+#ifndef UNDER_CE
 #include <zmouse.h>
+#endif
 
 /*
  * imm.h is needed by HandleIMEComposition
@@ -145,6 +150,8 @@ TkGetServerInfo(interp, tkwin)
 	    os.dwMinorVersion, os.dwBuildNumber,
 #ifdef _WIN64
 	    "Win64"
+#elif defined(UNDER_CE)
+	    "WinCE"
 #else
 	    "Win32"
 #endif
@@ -226,7 +233,8 @@ TkWinXInit(hInstance)
     }
     childClassInitialized = 1;
 
-    if (TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT) {
+    if ((TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT)
+	    || (TkWinGetPlatformId() == VER_PLATFORM_WIN32_CE)) {
 	/*
 	 * This is necessary to enable the use of themeable elements on XP,
 	 * so we don't even try and call it for Win9*.
@@ -259,7 +267,11 @@ TkWinXInit(hInstance)
     childClass.cbClsExtra = 0;
     childClass.cbWndExtra = 0;
     childClass.hInstance = hInstance;
+#ifdef UNDER_CE
+    childClass.hbrBackground = (HBRUSH) (COLOR_WINDOW + 1);
+#else
     childClass.hbrBackground = NULL;
+#endif
     childClass.lpszMenuName = NULL;
 
     /*
@@ -274,6 +286,10 @@ TkWinXInit(hInstance)
     if (!RegisterClass(&childClass)) {
 	panic("Unable to register TkChild class");
     }
+
+#ifdef UNDER_CE
+    WCEInitMenu();
+#endif
 
     /*
      * Make sure we cleanup on finalize.
@@ -336,6 +352,7 @@ TkWinXCleanup(hInstance)
  *	    VER_PLATFORM_WIN32s		Win32s on Windows 3.1. 
  *	    VER_PLATFORM_WIN32_WINDOWS	Win32 on Windows 95.
  *	    VER_PLATFORM_WIN32_NT	Win32 on Windows NT
+ *	    VER_PLATFORM_WIN32_CE	Windows CE
  *
  * Side effects:
  *	None.
@@ -642,10 +659,12 @@ TkWinChildProc(hwnd, message, wParam, lParam)
     LRESULT result;
 
     switch (message) {
+#ifdef WM_INPUTLANGCHANGE // not defined for Windows CE as of v3.0
         case WM_INPUTLANGCHANGE:
 	    UpdateInputLanguage(wParam);
 	    result = 1;
 	    break;
+#endif
 
         case WM_IME_COMPOSITION:
             result = 0;
@@ -761,6 +780,15 @@ Tk_TranslateWinEvent(hwnd, message, wParam, lParam, resultPtr)
 	case WM_MBUTTONUP:
 	case WM_RBUTTONUP:
 	case WM_MOUSEMOVE:
+#ifdef UNDER_CE_OLD
+	{
+	    POINT pt;
+	    pt.x = (short) LOWORD(lParam);
+	    pt.y = (short) HIWORD(lParam);
+	    ClientToScreen(hwnd, &pt);
+	    WinCESetCursorPos(pt.x, pt.y);
+	}
+#endif
 	    Tk_PointerEvent(hwnd, (short) LOWORD(lParam),
 		    (short) HIWORD(lParam));
 	    return 1;
@@ -1351,7 +1379,11 @@ HandleIMEComposition(hwnd, lParam)
     char * buff;
     TkWindow *winPtr;
     Tcl_Encoding unicodeEncoding = TkWinGetUnicodeEncoding();
+#ifdef UNDER_CE
+    BOOL isWinNT = TRUE;
+#else
     BOOL isWinNT = (TkWinGetPlatformId() == VER_PLATFORM_WIN32_NT);
+#endif
 
     if ((lParam & GCS_RESULTSTR) == 0) {
         /*
@@ -1365,13 +1397,16 @@ HandleIMEComposition(hwnd, lParam)
     if (hIMC) {
 	if (isWinNT) {
 	    n = ImmGetCompositionStringW(hIMC, GCS_RESULTSTR, NULL, 0);
+#ifndef UNDER_CE
 	} else {
 	    n = ImmGetCompositionStringA(hIMC, GCS_RESULTSTR, NULL, 0);
+#endif
 	}
 
         if ((n > 0) && ((buff = (char *) ckalloc(n)) != NULL)) {
 	    if (isWinNT) {
 		n = ImmGetCompositionStringW(hIMC, GCS_RESULTSTR, buff, n);
+#ifndef UNDER_CE
 	    } else {
 		Tcl_DString utfString, unicodeString;
 
@@ -1395,6 +1430,7 @@ HandleIMEComposition(hwnd, lParam)
 		memcpy(buff, Tcl_DStringValue(&unicodeString), n);
 		Tcl_DStringFree(&utfString);
 		Tcl_DStringFree(&unicodeString);
+#endif
 	    }
 
 	    /*

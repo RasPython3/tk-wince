@@ -17,7 +17,10 @@
 #include <windows.h>
 #undef WIN32_LEAN_AND_MEAN
 #include <malloc.h>
+
+#ifndef UNDER_CE
 #include <locale.h>
+#endif
 
 #include "tkInt.h"
 
@@ -81,7 +84,11 @@ extern int TK_LOCAL_MAIN_HOOK _ANSI_ARGS_((int *argc, char ***argv));
  */
 
 int APIENTRY
+#ifdef UNDER_CE
+wWinMain(hInstance, hPrevInstance, lpszCmdLine, nCmdShow)
+#else
 WinMain(hInstance, hPrevInstance, lpszCmdLine, nCmdShow)
+#endif
     HINSTANCE hInstance;
     HINSTANCE hPrevInstance;
     LPSTR lpszCmdLine;
@@ -89,8 +96,20 @@ WinMain(hInstance, hPrevInstance, lpszCmdLine, nCmdShow)
 {
     char **argv;
     int argc;
+#ifndef UNDER_CE
     char buffer[MAX_PATH+1];
     char *p;
+#endif
+
+#ifdef UNDER_CE
+    nCmdShow = SW_SHOWNORMAL;
+
+    XCEShowWaitCursor();
+
+    xceinit(lpszCmdLine);
+    argc = __xceargc;
+    argv = __xceargv;
+#endif
 
     Tcl_SetPanicProc(WishPanic);
 
@@ -107,6 +126,7 @@ WinMain(hInstance, hPrevInstance, lpszCmdLine, nCmdShow)
      * is performed correctly.
      */
 
+#ifndef UNDER_CE
     setlocale(LC_ALL, "C");
     setargv(&argc, &argv);
 
@@ -122,6 +142,7 @@ WinMain(hInstance, hPrevInstance, lpszCmdLine, nCmdShow)
 	    *p = '/';
 	}
     }
+#endif
 
 #ifdef TK_LOCAL_MAIN_HOOK
     TK_LOCAL_MAIN_HOOK(&argc, &argv);
@@ -167,6 +188,10 @@ Tcl_AppInit(interp)
      * Initialize the console only if we are running as an interactive
      * application.
      */
+
+#ifdef UNDER_CE
+    consoleRequired = FALSE;
+#endif
 
     if (consoleRequired) {
 	if (Tk_CreateConsoleWindow(interp) == TCL_ERROR) {
@@ -387,8 +412,9 @@ int main(int argc, char **argv)
      * Set up the default locale to be standard "C" locale so parsing
      * is performed correctly.
      */
-
+#ifndef UNDER_CE
     setlocale(LC_ALL, "C");
+#endif
 
     /*
      * Create the console channels and install them as the standard
